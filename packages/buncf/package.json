@@ -1,0 +1,70 @@
+{
+  "name": "buncf",
+  "version": "0.1.0",
+  "description": "Deploy Bun applications to Cloudflare Workers with zero configuration",
+  "keywords": [
+    "bun",
+    "cloudflare",
+    "workers",
+    "adapter",
+    "deploy",
+    "serverless",
+    "edge"
+  ],
+  "license": "MIT",
+  "author": "Francyelton Nobre",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/francyelton/buncf"
+  },
+  "homepage": "https://github.com/francyelton/buncf#readme",
+  "bugs": {
+    "url": "https://github.com/francyelton/buncf/issues"
+  },
+  "module": "src/index.ts",
+  "types": "src/types.ts",
+  "exports": {
+    ".": {
+      "types": "./src/types.ts",
+      "import": "./src/index.ts"
+    },
+    "./router": {
+      "types": "./src/router/react.ts",
+      "import": "./src/router/react.ts"
+    }
+  },
+  "bin": {
+    "buncf": "src/cli.ts"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/react": "^19.2.8",
+    "@types/react-dom": "^19.2.3"
+  },
+  "peerDependencies": {
+    "typescript": "^5",
+    "bun-plugin-tailwind": "^0.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.0.0"
+  },
+  "peerDependenciesMeta": {
+    "bun-plugin-tailwind": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    }
+  }
+}

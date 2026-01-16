@@ -1,0 +1,27 @@
+{
+  "name": "playground",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "build": "bun buncf build",
+    "deploy": "bun buncf deploy"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^25.0.6",
+    "@types/react": "^19.2.8",
+    "@types/react-dom": "^19.2.3",
+    "buncf": "workspace:*",
+    "wrangler": "^4.58.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "bun-plugin-tailwind": "^0.1.2",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
+  }
+}
