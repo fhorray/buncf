@@ -28,68 +28,78 @@ export default function BlogPostPage() {
 
   if (!post) {
     return (
-      <div className="min-h-screen bg-red-50 p-8">
-        <div className="max-w-2xl mx-auto text-center">
-          <h1 className="text-4xl font-bold text-red-600 mb-4">
-            Post Not Found
-          </h1>
-          <p className="text-gray-600 mb-6">The post "{slug}" doesn't exist.</p>
-          <Link href="/" className="text-blue-600 hover:underline">
-            ← Back to Home
-          </Link>
+      <div className="min-h-[50vh] flex flex-col items-center justify-center space-y-4 pt-10 px-4">
+        <div className="w-20 h-20 rounded-2xl bg-destructive/10 text-destructive flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
         </div>
+        <h1 className="text-4xl font-extrabold tracking-tight">Post Not Found</h1>
+        <p className="text-muted-foreground text-center max-w-sm">The article "{slug}" couldn't be located in our edge directory.</p>
+        <Link href="/" className="px-6 py-2 bg-primary text-primary-foreground rounded-lg font-bold hover:opacity-90 transition-opacity">
+            Return Home
+        </Link>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-white p-8">
-      <div className="max-w-2xl mx-auto">
-        <Link
-          href="/"
-          className="text-blue-600 hover:underline mb-4 inline-block"
-        >
-          ← Back to Home
-        </Link>
+    <div className="max-w-3xl mx-auto py-10 px-4">
+      <Link
+        href="/blog"
+        className="text-sm font-medium text-primary hover:underline underline-offset-4 mb-8 inline-block"
+      >
+        ← Back to Blog
+      </Link>
 
-        <article>
-          <header className="mb-8">
-            <h1 className="text-4xl font-bold text-gray-800 mb-2">
-              {post.title}
+      <article className="space-y-10 group">
+        <header className="space-y-4">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-primary">
+                <span className="px-2 py-0.5 rounded bg-primary text-primary-foreground">Buncf Edge</span>
+                <span>•</span>
+                <time className="text-muted-foreground">{post.date}</time>
+            </div>
+            <h1 className="text-5xl font-extrabold tracking-tighter leading-tight text-foreground">
+                {post.title}
             </h1>
-            <p className="text-gray-500">Posted on {post.date}</p>
-          </header>
+        </header>
 
-          <div className="prose prose-lg text-gray-600">
-            <p>{post.content}</p>
-          </div>
-
-          {/* Show route params */}
-          <div className="mt-8 p-4 bg-gray-100 rounded-lg">
-            <p className="text-sm text-gray-500 font-mono">
-              Route param: slug = "{slug}"
-            </p>
-          </div>
-        </article>
-
-        {/* Other posts */}
-        <div className="mt-12 border-t pt-8">
-          <h2 className="text-xl font-semibold mb-4">Other Posts</h2>
-          <div className="space-y-2">
-            {Object.entries(posts)
-              .filter(([key]) => key !== slug)
-              .map(([key, p]) => (
-                <Link
-                  key={key}
-                  href={`/blog/${key}`}
-                  className="block text-blue-600 hover:underline"
-                >
-                  → {p.title}
-                </Link>
-              ))}
-          </div>
+        <div className="prose prose-slate dark:prose-invert max-w-none text-xl leading-relaxed text-muted-foreground border-l-2 border-primary/20 pl-8 italic">
+            {post.content}
         </div>
-      </div>
+
+        <div className="p-8 rounded-3xl bg-muted/40 border border-border shadow-inner">
+            <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground mb-4">Route Information</h3>
+            <div className="flex flex-wrap gap-4">
+                <div className="px-3 py-1.5 rounded-md bg-background border text-xs font-mono">
+                    <span className="text-muted-foreground mr-2">PARAM:</span>
+                    <span className="text-primary font-bold">{slug}</span>
+                </div>
+                <div className="px-3 py-1.5 rounded-md bg-background border text-xs font-mono">
+                    <span className="text-muted-foreground mr-2">SOURCE:</span>
+                    <span className="text-foreground">pages/blog/[slug].tsx</span>
+                </div>
+            </div>
+        </div>
+      </article>
+
+      {/* Suggested Reading */}
+      <section className="mt-20 pt-10 border-t">
+        <h2 className="text-2xl font-bold mb-6 tracking-tight">Suggested Reading</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {Object.entries(posts)
+            .filter(([key]) => key !== slug)
+            .map(([key, p]) => (
+              <Link
+                key={key}
+                href={`/blog/${key}`}
+                className="group p-5 rounded-2xl border bg-card hover:border-primary/50 transition-all shadow-sm hover:shadow-md"
+              >
+                <div className="text-xs text-muted-foreground mb-2">{p.date}</div>
+                <h3 className="font-bold text-foreground group-hover:text-primary transition-colors mb-1">{p.title}</h3>
+                <p className="text-xs text-muted-foreground truncate">{p.content}</p>
+              </Link>
+            ))}
+        </div>
+      </section>
     </div>
   );
 }

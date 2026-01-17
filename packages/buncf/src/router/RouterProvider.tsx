@@ -99,11 +99,18 @@ export function BuncfRouter({
   const [error, setError] = useState<Error | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Track current pathname to prevent loops
+  const currentPathRef = React.useRef(routerStore.getState().pathname);
+
   // Subscribe to router store updates
   useEffect(() => {
     const unsubscribe = routerStore.subscribe((state) => {
       setRoute(state);
-      loadPage(state.pathname);
+      // Only reload page if pathname changed
+      if (state.pathname !== currentPathRef.current) {
+         currentPathRef.current = state.pathname;
+         loadPage(state.pathname);
+      }
     });
     return () => {
       unsubscribe();
@@ -121,35 +128,65 @@ export function BuncfRouter({
 
     try {
       // 1. Find matching route
-      // This is a simplified client-side matcher.
-      // Ideally we reuse the server's match data if available from window.__BUNCF_ROUTE__
-      // or implement full matching logic here.
-
-      // For now, let's assume we can resolve the import key mostly directly or through simple map
-      // In a real implementation, we need the route manifest passed from server.
-
-      // Heuristic: Try exact match first
       let importer = routes[pathname];
+      let matchedParams: Record<string, string> = {};
 
-      // Try resolving index
-      if (!importer && pathname === '/') importer = routes['/index'];
+      // Try resolving index or trailing slash variations
+      if (!importer) {
+        if (pathname === '/') importer = routes['/index'];
+        else if (pathname.endsWith('/')) importer = routes[pathname.slice(0, -1)];
+        else importer = routes[`${pathname}/`];
+      }
 
-      // TODO: Add proper dynamic route matching (client-side)
-      // For now we rely on what we can find in the map
+      // Dynamic Route Matching
+      if (!importer) {
+        const routeKeys = Object.keys(routes);
+        for (const key of routeKeys) {
+          // Convert /blog/[slug] to regex: ^/blog/([^/]+)$
+          // Escape special chars except brackets
+          if (!key.includes('[') && !key.includes('*')) continue; // optimization: only check dynamic routes
+
+          const paramNames: string[] = [];
+          const regexStr = key
+            .replace(/\[([a-zA-Z0-9_]+)\]/g, (_, name) => {
+              paramNames.push(name);
+              return '([^/]+)';
+            })
+            // Escape slashes
+            .replace(/\//g, '\\/'); 
+          
+          const regex = new RegExp(`^${regexStr}/?$`); // Allow optional trailing slash in regex match
+          const match = pathname.match(regex);
+          
+          if (match) {
+            importer = routes[key];
+            match.slice(1).forEach((val, i) => {
+              const paramName = paramNames[i];
+              if (paramName) {
+                matchedParams[paramName] = decodeURIComponent(val);
+              }
+            });
+            break; 
+          }
+        }
+      }
 
       if (!importer) {
-        // Retry with simple mapping logic for now
-        // /about -> /about
-        // /users/123 -> /users/[id] ?? Hard without manifest
+         // Fallback: Use injected server-side match if available and exact
+         // (Only useful if client has no map but server knew it? Unlikely with current architecture)
+         setPageComponent(() => NotFoundPage);
+         return;
+      }
 
-        // Use injected route data if available
-        const injected = (window as any).__BUNCF_ROUTE__;
-        if (injected && injected.pathname === pathname && injected.filePath) {
-          // We might need to map filePath back to route key
-        }
-
-        setPageComponent(() => NotFoundPage);
-        return;
+      // Update params in store if we found new ones
+      if (Object.keys(matchedParams).length > 0) {
+        routerStore.setParams(matchedParams);
+      } else {
+        // Ensure params are cleared if no match (e.g. going from /blog/1 to /about)
+        // routerStore.setParams({}); 
+        // actually `push` clears params.
+        // But if we landed on a static route that implies empty params, we might want to clear them?
+        // Let's rely on push/replace clearing them.
       }
 
       // 2. Import page component

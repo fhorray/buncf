@@ -110,6 +110,10 @@ function createRouterStore() {
     replace,
     back,
     forward,
+    setParams(params: Record<string, string>) {
+      state = { ...state, params };
+      notify();
+    }
   };
 }
 

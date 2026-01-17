@@ -165,15 +165,14 @@ my-app/
 
 ## Wrangler Config
 
-```jsonc
 // wrangler.jsonc
 {
   "name": "my-app",
-  "main": "./.buncf/worker.js",
+  "main": "./.buncf/cloudflare/worker.js",
   "compatibility_date": "2024-12-30",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
-    "directory": ".buncf/assets",
+    "directory": ".buncf/cloudflare/assets",
     "binding": "ASSETS",
   },
 }

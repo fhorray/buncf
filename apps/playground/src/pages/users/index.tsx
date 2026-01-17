@@ -30,55 +30,82 @@ export default function UsersPage() {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-2xl mx-auto">
-        <Link
-          href="/"
-          className="text-blue-600 hover:underline mb-4 inline-block"
-        >
-          ← Back to Home
-        </Link>
-
-        <h1 className="text-4xl font-bold text-gray-800 mb-6">Users</h1>
-
-        {/* Search with query params */}
-        <div className="mb-6">
-          <input
-            type="text"
-            placeholder="Search users..."
-            value={search}
-            onChange={(e) => setQuery({ search: e.target.value })}
-            className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-          />
-          <p className="text-sm text-gray-500 mt-2">
-            URL updates with search params: ?search={search}
-          </p>
+    <div className="max-w-3xl mx-auto py-10 px-4">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
+        <div>
+          <Link
+            href="/"
+            className="text-sm font-medium text-primary hover:underline underline-offset-4 mb-4 inline-block"
+          >
+            ← Back to Home
+          </Link>
+          <h1 className="text-4xl font-extrabold tracking-tight">Active Users</h1>
+          <p className="text-muted-foreground mt-2">Manage and browse your application directory.</p>
         </div>
 
-        {/* Users list */}
-        {loading ? (
-          <p className="text-gray-500">Loading...</p>
-        ) : (
-          <div className="space-y-4">
-            {filteredUsers.map((user) => (
-              <div
-                key={user.id}
-                className="bg-white p-4 rounded-lg shadow hover:shadow-md transition"
-              >
-                <Link
-                  href={`/users/${user.id}`}
-                  className="text-xl font-semibold text-blue-600 hover:underline"
-                >
-                  {user.name}
-                </Link>
-                <p className="text-gray-500">{user.email}</p>
-              </div>
-            ))}
-            {filteredUsers.length === 0 && (
-              <p className="text-gray-500">No users found.</p>
-            )}
+        {/* Search with query params */}
+        <div className="relative w-full max-w-sm">
+          <input
+            type="text"
+            placeholder="Search directory..."
+            value={search}
+            onChange={(e) => setQuery({ search: e.target.value })}
+            className="w-full px-4 py-2.5 bg-background border rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all pr-10"
+          />
+          <div className="absolute right-3 top-2.5 text-muted-foreground/50">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
           </div>
-        )}
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex flex-col items-center justify-center py-20 animate-pulse">
+            <div className="w-12 h-12 rounded-full border-4 border-primary/30 border-t-primary animate-spin mb-4"></div>
+            <p className="text-muted-foreground font-medium">Fetching users...</p>
+        </div>
+      ) : (
+        <div className="grid gap-4">
+          {filteredUsers.map((user) => (
+            <div
+              key={user.id}
+              className="group flex items-center justify-between bg-card p-5 rounded-2xl border shadow-sm hover:shadow-md hover:border-primary/30 transition-all"
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-lg">
+                  {user.name.charAt(0)}
+                </div>
+                <div>
+                    <h3 className="font-bold text-foreground group-hover:text-primary transition-colors">
+                        {user.name}
+                    </h3>
+                    <p className="text-sm text-muted-foreground">{user.email}</p>
+                </div>
+              </div>
+              <Link
+                href={`/users/${user.id}`}
+                className="px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm font-semibold hover:bg-muted transition-colors"
+              >
+                View Profile
+              </Link>
+            </div>
+          ))}
+          
+          {filteredUsers.length === 0 && (
+            <div className="text-center py-20 rounded-2xl border-2 border-dashed bg-muted/20">
+              <p className="text-muted-foreground">No users found matching "{search}"</p>
+              <button 
+                onClick={() => setQuery({})}
+                className="mt-4 text-primary font-semibold hover:underline"
+              >
+                Clear search
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+      
+      <div className="mt-8 text-[10px] text-center uppercase tracking-widest text-muted-foreground/30 font-bold">
+        Live sync with ?search={search || 'null'}
       </div>
     </div>
   );

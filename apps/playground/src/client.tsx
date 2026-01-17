@@ -6,7 +6,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BuncfRouter } from 'buncf/router';
 import Layout from './_layout';
-import { routes } from './routes';
+import { routes } from '../.buncf/routes';
 
 const elem = document.getElementById('root');
 if (!elem) throw new Error('Root element not found');

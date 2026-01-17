@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "bun run --watch src/index.ts",
     "build": "bun buncf build",
-    "deploy": "bun buncf deploy"
+    "deploy": "bun buncf deploy",
+    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",

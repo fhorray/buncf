@@ -27,18 +27,14 @@ export interface CreateAppOptions {
   publicDir?: string;
   /** HTML file to serve for SPA routes (default: auto-detect index.html) */
   indexHtml?: string;
+  /** Injected HTML content for SPA fallback (no file access needed) */
+  indexHtmlContent?: string;
+  /** Injected static route manifest for build-time router (Internal use) */
+  staticRoutes?: { api?: any; pages?: any };
 }
 
 /**
  * Create a Buncf application with automatic routing
- * 
- * @example
- * ```ts
- * import { serve } from "bun";
- * import { createApp } from "buncf";
- * 
- * serve(createApp());
- * ```
  */
 export function createApp(options: CreateAppOptions = {}) {
   const {
@@ -46,30 +42,67 @@ export function createApp(options: CreateAppOptions = {}) {
     pagesDir = "./src/pages",
     publicDir = "./src/public",
     indexHtml,
+    staticRoutes,
+    indexHtmlContent: injectedHtml,
   } = options;
 
   // Initialize routers
-  const apiRouter = createApiRouter({ dir: apiDir });
-  const pagesRouter = createPagesRouter({ dir: pagesDir });
+  // Use static routes if provided (Build mode), otherwise default to dir (Runtime/Dev)
+  const apiRouter = createApiRouter({
+    dir: apiDir,
+    staticRoutes: staticRoutes?.api
+  });
+  const pagesRouter = createPagesRouter({
+    dir: pagesDir,
+    staticRoutes: staticRoutes?.pages
+  });
 
-  // Find index.html
-  let htmlPath = indexHtml;
-  if (!htmlPath) {
-    const candidates = ["./src/index.html", "./index.html", "./public/index.html"];
-    htmlPath = candidates.find((p) => fs.existsSync(p));
+  // Find index.html content
+  let indexHtmlContent: string | null = injectedHtml || null;
+
+  if (!indexHtmlContent) {
+    // Runtime/Dev fallback: try reading file
+    let htmlPath = indexHtml;
+    if (!htmlPath) {
+      const candidates = ["./src/index.html", "./index.html", "./public/index.html"];
+      htmlPath = candidates.find((p) => fs.existsSync(p));
+    }
+    if (htmlPath && fs.existsSync(htmlPath)) {
+      indexHtmlContent = fs.readFileSync(htmlPath, "utf-8");
+    }
   }
 
-  // Import HTML file if exists
-  let indexHtmlContent: string | null = null;
-  if (htmlPath && fs.existsSync(htmlPath)) {
-    indexHtmlContent = fs.readFileSync(htmlPath, "utf-8");
+  if (process.env.NODE_ENV !== "production") {
+    const port = (globalThis as any).Bun?.peek?.()?.port || 3000;
+    console.log(`\n  \x1b[36m🚀 Buncf Development Server\x1b[0m`);
+    console.log(`  \x1b[32m✔\x1b[0m Local:    \x1b[34mhttp://localhost:${port}\x1b[0m`);
+    console.log(`  \x1b[32m✔\x1b[0m Ready in: \x1b[33msrc/api/\x1b[0m and \x1b[33msrc/pages/\x1b[0m\n`);
   }
 
   /**
    * Main fetch handler
    */
   async function fetch(req: Request): Promise<Response> {
-    const url = new URL(req.url);
+    if (process.env.NODE_ENV !== "production") {
+      const url = new URL(req.url);
+      const method = req.method;
+      const path = url.pathname;
+      const start = performance.now();
+
+      const response = await handleRequest(req, url);
+
+      const duration = (performance.now() - start).toFixed(2);
+      const status = response.status;
+      const statusColor = status >= 500 ? "\x1b[31m" : status >= 400 ? "\x1b[33m" : status >= 300 ? "\x1b[36m" : "\x1b[32m";
+
+      console.log(`  \x1b[90m${new Date().toLocaleTimeString()}\x1b[0m ${method} ${path} - ${statusColor}${status}\x1b[0m \x1b[90m(${duration}ms)\x1b[0m`);
+      return response;
+    }
+
+    return handleRequest(req, new URL(req.url));
+  }
+
+  async function handleRequest(req: Request, url: URL): Promise<Response> {
 
     // 1. Try API routes first
     if (apiRouter && url.pathname.startsWith("/api")) {

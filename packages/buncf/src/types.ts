@@ -1,74 +1,47 @@
-import type { BunPlugin } from "bun";
 
-/**
- * Configuration for the buncf build process
- */
-export interface BuncfConfig {
-  /** Directory containing static assets (default: "public" or "src/public") */
-  publicDir?: string;
-  /** Output directory for built assets (default: ".buncf/assets") */
-  assetsDir?: string;
-  /** Output directory for worker (default: ".buncf") */
-  outDir?: string;
-  /** Enable verbose logging */
-  verbose?: boolean;
+// --- TYPE DEFINITIONS ---
+
+export type BunHandlerFunction = (req: BunRequest) => Response | Promise<Response>;
+
+export interface BunHandlerObject {
+  [method: string]: BunHandlerFunction | string | undefined;
+  default?: string; // For asset module default exports
 }
 
-/**
- * HTTP method handler function
- */
-export type RouteHandlerFn = (req: Request) => Response | Promise<Response>;
+export type BunRouteHandler = BunHandlerFunction | BunHandlerObject | string;
 
-/**
- * Per-method route handlers
- */
-export interface MethodHandlers {
-  GET?: RouteHandlerFn;
-  POST?: RouteHandlerFn;
-  PUT?: RouteHandlerFn;
-  PATCH?: RouteHandlerFn;
-  DELETE?: RouteHandlerFn;
-  HEAD?: RouteHandlerFn;
-  OPTIONS?: RouteHandlerFn;
-  /** Default handler for unmatched methods */
-  default?: RouteHandlerFn | string;
+
+export interface BunServeOptions {
+  port?: number | string;
+  hostname?: string;
+  baseURI?: string;
+  routes?: Record<string, BunRouteHandler>;
+  fetch?: (req: Request, server: any) => Response | Promise<Response>;
+  error?: (error: Error) => Response | Promise<Response>;
+  assetPrefix?: string; // Custom config for Point 4
+  development?: boolean;
 }
 
-/**
- * Route handler can be:
- * - A function that returns a Response
- * - An object with method-specific handlers
- * - A string path to a static asset
- */
-export type RouteHandler = RouteHandlerFn | MethodHandlers | string;
-
-/**
- * Routes configuration object
- * Keys are URL patterns (e.g., "/api/users/:id")
- * Values are handlers
- */
-export type Routes = Record<string, RouteHandler>;
-
-/**
- * Extended Request with route parameters
- */
-export interface BuncfRequest extends Request {
-  params: Record<string, string>;
+export interface BunShimType {
+  env: Record<string, string | undefined>;
+  serve: (options: BunServeOptions) => {
+    port: number;
+    url: string;
+    stop: () => void;
+  };
+  [key: string]: any; // Allow other native Bun properties (file, write, argv, etc)
 }
 
-/**
- * Bun.serve options compatible with buncf
- */
-export interface ServeOptions {
-  /** Route definitions */
-  routes?: Routes;
-  /** Custom fetch handler (alternative to routes) */
-  fetch?: (req: Request) => Response | Promise<Response>;
-  /** Port number (used in local dev, ignored on Cloudflare) */
-  port?: number;
+
+// Extended Request interface for usage within handlers
+export interface BunRequest extends Request {
+  params?: Record<string, string>;
 }
 
-/**
- * The main buncf plugin for Bun.build
- */
-export declare function bunToCloudflare(config?: BuncfConfig): BunPlugin;
+// Cloudflare Environment Types
+export interface CloudflareEnv {
+  ASSETS?: { fetch: (req: Request) => Promise<Response> };
+  [key: string]: any;
+}
+
+
