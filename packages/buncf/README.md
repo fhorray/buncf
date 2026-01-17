@@ -115,6 +115,125 @@ export default function BlogPost() {
 }
 ```
 
+### Hono Integration (Catch-All)
+
+Buncf fully supports [Hono](https://hono.dev/) for more complex API needs.
+Create `src/api/[...route].ts` to handle all matching API requests with Hono:
+
+```typescript
+// src/api/[...route].ts
+import { Hono } from "hono";
+const app = new Hono().basePath("/api");
+
+app.get("/hello", (c) => c.json({ message: "Hello from Hono!" }));
+app.get("/users", (c) => c.json([{ id: 1, name: "Alice" }]));
+
+// Export Hono's fetch handler directly
+export default app.fetch;
+```
+
+---
+
+## Custom Error & Loading Pages
+
+Create special files in `src/pages/` (or `src/` root) to customize global states:
+
+- `src/pages/_error.tsx` - Shown when an error occurs during navigation or rendering.
+- `src/pages/_loading.tsx` - Shown while a page chunk is loading (SPA navigation).
+- `src/pages/_notfound.tsx` - Shown when a route is not found (404).
+
+```tsx
+// src/pages/_error.tsx
+export default function ErrorPage({ error }: { error: Error }) {
+  return (
+    <div className="error-container">
+      <h1>Custom Error: {error.message}</h1>
+      <a href="/">Go Back</a>
+    </div>
+  );
+}
+```
+
+```tsx
+// src/pages/_loading.tsx
+export default function Loading() {
+  return <div className="spinner">Loading...</div>;
+}
+```
+
+```tsx
+// src/pages/_notfound.tsx
+export default function NotFound() {
+  return <h1>404 - Page Not Found</h1>;
+}
+```
+
+### Nested Layouts
+
+Buncf supports Next.js-style nested layouts.
+Create `_layout.tsx` in any directory to wrap all pages within it.
+
+- `src/pages/_layout.tsx` - Wraps everything (Global Layout).
+- `src/pages/dashboard/_layout.tsx` - Wraps `/dashboard/*`.
+
+Layouts nest automatically: `Global > Dashboard > Page`.
+
+```tsx
+// src/pages/dashboard/_layout.tsx
+export const meta = () => [
+  { title: "Dashboard - MyApp" },
+  { name: "robots", content: "noindex" }
+];
+
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="dashboard-grid">
+      <Sidebar />
+      <main>{children}</main>
+    </div>
+  );
+}
+```
+
+### Layout Metadata
+
+Layouts can export a `meta` function to define default metadata for all nested pages.
+Supported tags: `title`, `name`, `property`, `charset`, `viewport`, etc.
+Inner layouts or pages can override specific tags (last writer wins for unique attributes).
+
+---
+
+## Declarative Middleware
+
+Buncf supports Next.js-style middleware. Create `src/middleware.ts` to intercept requests.
+
+```typescript
+// src/middleware.ts
+import type { MiddlewareConfig } from "buncf";
+
+export default [
+  {
+    name: "auth-guard",
+    matcher: "/api/protected/*", // Supports wildcards
+    handler: async (req, next) => {
+      const token = req.headers.get("Authorization");
+      if (!token) {
+        return new Response("Unauthorized", { status: 401 });
+      }
+      return next(); // Proceed to next middleware or route handler
+    }
+  },
+  {
+    name: "logger",
+    matcher: "/api/*",
+    handler: async (req, next) => {
+      console.log(`[${req.method}] ${req.url}`);
+      return next();
+    }
+  }
+] satisfies MiddlewareConfig[];
+```
+
 ---
 
 ## Type-Safe API Client (RPC-like)
@@ -165,6 +284,27 @@ export default function UserPage() {
 | ---------------------- | ------------------------------------ |
 | `.buncf/api-types.d.ts` | TypeScript interface for all routes  |
 | `.buncf/api-client.ts`  | Hono-style typed fetch wrapper       |
+
+### Data Loaders
+
+Buncf supports "render-as-you-fetch" with Data Loaders.
+Export a `loader` function from your page to fetch data before rendering.
+The `_loading.tsx` component will be shown while the loader is running.
+
+```tsx
+// src/pages/dashboard.tsx
+import { api } from "../.buncf/api-client";
+
+export const loader = async ({ params, query }) => {
+    // This runs on the client
+    const stats = await api.get("/api/stats");
+    return stats;
+};
+
+export default function Dashboard({ data }: { data: any }) {
+    return <div>Stats: {data.total_users}</div>;
+}
+```
 
 ---
 
@@ -222,8 +362,8 @@ Access KV, D1, R2, and environment variables with full type support.
 
 ### Configuration
 
-```jsonc
-// wrangler.jsonc
+```json
+// wrangler.json
 {
   "name": "my-app",
   "main": "./.buncf/cloudflare/worker.js",
@@ -333,7 +473,7 @@ my-app/
 │   ├── routes.ts       # Client route manifest
 │   ├── api-types.d.ts  # API type definitions
 │   └── api-client.ts   # Typed API client
-├── wrangler.jsonc      # Cloudflare config
+├── wrangler.json       # Cloudflare config
 └── package.json
 ```
 

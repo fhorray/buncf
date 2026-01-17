@@ -1,3 +1,5 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import type { CloudflareEnv } from "./types";
 
 let devContext: { env: CloudflareEnv } | null = null;
@@ -106,6 +108,43 @@ export async function initBuncfDev(options?: {
         });
 
         env = await mf.getBindings();
+      }
+
+      env = env || {};
+
+      // 3. Polyfill ASSETS if missing or misconfigured (for local dev)
+      if (!env.ASSETS || true) { // Force override to ensure local assets are served
+        console.log("[Buncf Dev] Polyfilling ASSETS binding for local development...");
+        env.ASSETS = {
+          fetch: async (req: Request) => {
+            const url = new URL(req.url);
+            let filePath = path.join(process.cwd(), ".buncf/cloudflare/assets", url.pathname);
+
+            // SPA / Directory Fallback
+            if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+              const indexFile = path.join(process.cwd(), ".buncf/cloudflare/assets/index.html");
+              if (fs.existsSync(indexFile)) filePath = indexFile;
+            }
+
+            if (fs.existsSync(filePath) && !fs.statSync(filePath).isDirectory()) {
+              const content = fs.readFileSync(filePath);
+              const ext = path.extname(filePath);
+              const mimeTypes: Record<string, string> = {
+                ".html": "text/html",
+                ".js": "text/javascript",
+                ".css": "text/css",
+                ".png": "image/png",
+                ".jpg": "image/jpeg",
+                ".svg": "image/svg+xml",
+                ".json": "application/json"
+              };
+              return new Response(content, {
+                headers: { "Content-Type": mimeTypes[ext] || "application/octet-stream" }
+              });
+            }
+            return new Response("Not Found", { status: 404 });
+          }
+        };
       }
 
       devContext = { env: env as CloudflareEnv };

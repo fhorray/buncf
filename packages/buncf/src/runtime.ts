@@ -7,7 +7,7 @@ import type {
   CloudflareEnv,
   BunHandlerFunction
 } from './types';
-import { runWithCloudflareContext } from './context';
+import { runWithCloudflareContext, getCloudflareContext } from './context';
 
 // --- BUN-CF-ADAPTER RUNTIME (Optimized & Typed) ---
 // Provides O(1) matching, URL normalization, proxies, and asset handling.
@@ -18,102 +18,94 @@ let __handler__: BunServeOptions | null = null;
 
 // --- HELPER FUNCTIONS ---
 
-// Normalize URL path causing 301 behavior if needed or just cleaning
+// Normalize URL path
 function normalizePath(path: string): string {
   if (path === "/" || path === "") return "/";
   if (path.endsWith("/")) return path.slice(0, -1);
   return path;
 }
 
-// Global Asset Helper
+// Global Asset Helper (Optimized)
 async function globalServeAsset(req: Request, assetPrefix: string = "assets"): Promise<Response | null> {
   const url = new URL(req.url);
   let assetPath = url.pathname;
 
-  // Asset Prefix Logic
-  // If user configured "public", we strip it.
-  // Generally in Cloudflare Assets, the URL matches the file structure directly.
-  // But if the router logic had prefixes, we might need to handle it.
-  // For fallback, usually we take the pathname as is.
-
-  // Clean slightly just in case
-  const escapedPrefix = assetPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const prefixRegex = new RegExp(`^(\\.?\\/)?${escapedPrefix}\\/`);
-  assetPath = assetPath.replace(prefixRegex, "");
+  // Clean Path (Optimized: Avoid re-compiling Regex if possible, or simple slice)
+  // If assetPrefix is usually "assets", we can check efficiently
+  if (assetPrefix === "assets") {
+    if (assetPath.startsWith("/assets/")) assetPath = assetPath.slice(7);
+    else if (assetPath.startsWith("assets/")) assetPath = assetPath.slice(6);
+  } else {
+    // Generic fallback (dynamic prefix)
+    const escaped = assetPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const prefixSlash = "/" + assetPrefix + "/";
+    if (assetPath.startsWith(prefixSlash)) assetPath = assetPath.slice(prefixSlash.length - 1); // keep leading slash
+    else if (assetPath.startsWith(assetPrefix + "/")) assetPath = "/" + assetPath.slice(assetPrefix.length + 1);
+  }
 
   if (!assetPath.startsWith("/")) assetPath = "/" + assetPath;
 
-  // @ts-ignore
-  const assetsBinding = globalThis.Bun?.env?.ASSETS || (__BunShim__ as any)?.ASSETS || (typeof env !== 'undefined' ? (env && env.ASSETS) : null);
-
-  if (assetsBinding) {
-    const assetUrl = new URL(req.url);
-    assetUrl.pathname = assetPath;
-
-
-    // Helper to fetch
-    const fetchAsset = async (path: string) => {
-      const u = new URL(req.url);
-      u.pathname = path;
-      const r = new Request(u.toString(), { method: 'GET' });
-      const res = await assetsBinding.fetch(r);
-      // Debug: console.log(`[Buncf Asset] ${path} -> ${res.status}`);
-      return res;
-    };
-
-    try {
-      let res = await fetchAsset(assetPath);
-
-      // Auto-resolve directory index if 404
-      if (res.status === 404) {
-        if (assetPath.endsWith("/")) {
-          // Try adding index.html
-          const indexPath = assetPath + "index.html";
-          const indexRes = await fetchAsset(indexPath);
-          if (indexRes.status !== 404) res = indexRes;
-        } else if (!assetPath.includes(".")) {
-          // Probably a route like /about, try /about/index.html or /index.html (SPA Fallback)
-          // For now, let's try /index.html as a general SPA fallback if configured?
-          // Or just append /index.html
-          const indexPath = assetPath + "/index.html";
-          const indexRes = await fetchAsset(indexPath);
-          if (indexRes.status !== 404) {
-            res = indexRes;
-          } else {
-            // SPA Fallback: Try root index.html logic if the path seems to be a page route
-            const rootIndexRes = await fetchAsset("/index.html");
-            if (rootIndexRes.status !== 404) res = rootIndexRes;
-          }
-        }
-      }
-
-      if (res.status === 404) return null;
-
-      // Follow redirects
-      let redirectCount = 0;
-      while (res.status >= 300 && res.status < 400 && redirectCount < 5) {
-        const location = res.headers.get('location');
-        if (!location) break;
-        const redirectUrl = new URL(location, assetUrl);
-        res = await assetsBinding.fetch(new Request(redirectUrl.toString(), { method: 'GET' }));
-        redirectCount++;
-      }
-
-      // If final result is 404, return null to let original 404 stand (or continue fallback)
-      if (res.status === 404) return null;
-
-      return new Response(res.body, {
-        status: res.status >= 300 && res.status < 400 ? 200 : res.status,
-        headers: res.headers,
-      });
-    } catch (e: any) {
-      console.error(`[Buncf Fallback] ASSETS error: ${e.message}`);
-      return null;
-    }
-  } else {
-    // Warn only in dev: ASSETS binding missing
+  // Security: Prevent Directory Traversal
+  // Although Cloudflare ASSETS binding is sandboxed, we explicitly reject relative paths 
+  // to avoid any ambiguity or potential leaks if the sandbox assumptions change.
+  if (assetPath.includes("..")) {
+    return new Response("Invalid Path Name", { status: 400 });
   }
-  return null;
+
+  // Type-safe Binding Access
+  const ctx = getCloudflareContext();
+  const assetsBinding = ctx?.env?.ASSETS || (globalThis.Bun as any)?.ASSETS || (typeof (globalThis as any).env !== 'undefined' ? (globalThis as any).env.ASSETS : null);
+
+  if (!assetsBinding) return null;
+
+  const fetchAsset = async (path: string) => {
+    const u = new URL(url.toString());
+    u.pathname = path;
+    // We must invoke the binding with a fresh request
+    return assetsBinding.fetch(new Request(u.toString(), { method: 'GET', headers: req.headers }));
+  };
+
+  try {
+    // 1. Exact Match (Best Case)
+    let res = await fetchAsset(assetPath);
+
+    // 2. Directory Index Fallback (if 404 and no extension)
+    if (res.status === 404 && !assetPath.includes(".")) {
+      const indexPath = assetPath.endsWith("/") ? assetPath + "index.html" : assetPath + "/index.html";
+      const indexRes = await fetchAsset(indexPath);
+      if (indexRes.status !== 404) res = indexRes;
+    }
+
+    // 3. SPA Fallback (if still 404, generic, and looks like a page route)
+    // Only applies if we haven't found a file yet AND it's not a data request
+    if (res.status === 404 && !assetPath.startsWith("/api")) {
+      const rootIndexRes = await fetchAsset("/index.html");
+      if (rootIndexRes.status !== 404) res = rootIndexRes;
+    }
+
+    if (res.status === 404) return null;
+
+    // Follow redirects
+    let redirectCount = 0;
+    while (res.status >= 300 && res.status < 400 && redirectCount < 5) {
+      const location = res.headers.get('location');
+      if (!location) break;
+      const redirectUrl = new URL(location, url);
+      res = await assetsBinding.fetch(new Request(redirectUrl.toString(), { method: 'GET' }));
+      redirectCount++;
+    }
+
+    if (res.status === 404) return null;
+
+    return new Response(res.body, {
+      status: res.status >= 300 && res.status < 400 ? 200 : res.status,
+      headers: res.headers,
+    });
+
+  } catch (e: any) {
+    console.error(`[Buncf Fallback] ASSETS error: ${e.message}`);
+    return null;
+  }
 }
 
 // --- ROUTER LOGIC ---
@@ -200,8 +192,8 @@ function createFetchFromRoutes(
         const proxiedReq = new Proxy(req, {
           get(target, prop) {
             if (prop === "params") return params;
-            // @ts-ignore
-            const value = target[prop];
+            // Native Proxy trap for generic properties
+            const value = Reflect.get(target, prop);
             if (typeof value === "function") return value.bind(target);
             return value;
           }
@@ -241,10 +233,8 @@ export const __BunShim__: BunShimType = {
 
 // Global Injection
 try {
-  // @ts-ignore
   if (typeof globalThis.Bun === "undefined") {
-    // @ts-ignore
-    globalThis.Bun = __BunShim__;
+    (globalThis as any).Bun = __BunShim__;
   }
 } catch (e) { }
 
@@ -255,29 +245,27 @@ export default {
   async fetch(request: Request, env: CloudflareEnv, ctx: any) {
     // Sync Env
     try {
-      // Polyfill process for Cloudflare
-      if (typeof process === "undefined") globalThis.process = { env: {} } as any;
+      // Polyfill process using casting for the extended type
+      if (typeof process === "undefined") (globalThis as any).process = { env: {} };
       if (!process.env) process.env = {};
 
       const stringEnv: Record<string, string> = {};
       for (const key in env) {
         if (typeof env[key] === 'string') {
-          stringEnv[key] = env[key];
-          process.env[key] = env[key];
+          stringEnv[key] = env[key] as string;
+          process.env[key] = env[key] as string;
         }
       }
 
       // Sync to Bun shim
       __BunShim__.env = { ...stringEnv };
-      if (env.ASSETS) (__BunShim__ as any).ASSETS = env.ASSETS;
+      if (env.ASSETS) __BunShim__.ASSETS = env.ASSETS;
 
       if (typeof globalThis.Bun !== "undefined") {
         (globalThis.Bun as any).env = { ...stringEnv };
         if (env.ASSETS) (globalThis.Bun as any).ASSETS = env.ASSETS;
       }
 
-      // Debug Env (Visible in Realtime Logs)
-      // console.log("[runtime] Env Keys:", Object.keys(env));
     } catch (e) {
       console.error("[runtime] Env sync failed:", e);
     }
@@ -290,17 +278,20 @@ export default {
       // Execute User Logic
       const response = await runWithCloudflareContext(
         { env, ctx, cf: (request as any).cf },
-        () => __handler__!.fetch!(request, { ...(__handler__ || {}) })
-      );
+        async () => {
+          const res = await __handler__!.fetch!(request, { ...(__handler__ || {}) });
 
-      // --- ASSET FALLBACK FOR USER HANDLERS ---
-      // If user returns 404 on GET, try to find matching asset in Cloudflare
-      if (response.status === 404 && request.method === "GET") {
-        const assetResponse = await globalServeAsset(request, __handler__.assetPrefix);
-        if (assetResponse) {
-          return assetResponse;
+          // --- ASSET FALLBACK FOR USER HANDLERS ---
+          // If user returns 404 on GET, try to find matching asset in Cloudflare
+          if (res.status === 404 && request.method === "GET") {
+            const assetResponse = await globalServeAsset(request, __handler__!.assetPrefix);
+            if (assetResponse) {
+              return assetResponse;
+            }
+          }
+          return res;
         }
-      }
+      );
 
       return response;
 

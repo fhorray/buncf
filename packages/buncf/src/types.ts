@@ -24,18 +24,33 @@ export interface BunServeOptions {
 
 export interface BunShimType {
   env: Record<string, string | undefined>;
+  ASSETS?: { fetch: (req: Request) => Promise<Response> };
   serve: (options: BunServeOptions) => {
     port: number;
     url: string;
     stop: () => void;
   };
-  [key: string]: any; // Allow other native Bun properties (file, write, argv, etc)
+  file?: (path: string) => any;
+  write?: (path: string, content: any) => Promise<any>;
+  [key: string]: any;
 }
 
 
 // Extended Request interface for usage within handlers
 export interface BunRequest extends Request {
   params?: Record<string, string>;
+}
+
+// --- MIDDLEWARE TYPES ---
+
+export type MiddlewareNext = () => Promise<Response>;
+
+export interface MiddlewareConfig {
+  name?: string;
+  // URLPattern string (e.g. "/api/*", "/users/:id") or array of strings.
+  // If undefined, matches ALL requests.
+  matcher?: string | string[];
+  handler: (req: Request, next: MiddlewareNext) => Response | Promise<Response>;
 }
 
 // --- CLOUDFLARE ENVIRONMENT TYPES ---
@@ -53,37 +68,17 @@ export interface CloudflareEnvBase {
 
 /**
  * Type registry for Buncf. Users can augment this to customize types globally.
- * 
- * @example
- * ```typescript
- * // In your app's cloudflare-env.d.ts or a global.d.ts:
- * declare module "buncf" {
- *   interface BuncfTypeRegistry {
- *     // Your generated CloudflareEnv type
- *     env: CloudflareEnv;
- *     // Generated Routes
- *     routes: any;
- *   }
- * }
- * ```
  */
-/**
- * Route Path Helper
- * Infers valid routes from BuncfTypeRegistry, or falls back to string.
- * Allows pure string for dynamic routes.
- */
-// If routes is any (default), keyof routes is string | number | symbol.
-// We want to verify if specific keys exist.
-export type RegisteredRoutes = BuncfTypeRegistry extends { routes: infer R } ? R : {};
-export type RoutePath = (keyof RegisteredRoutes & string) | (string & {});
 export interface BuncfTypeRegistry {
   // Default: uses CloudflareEnvBase
 }
 
+// Route Path Helper
+export type RegisteredRoutes = BuncfTypeRegistry extends { routes: infer R } ? R : {};
+export type RoutePath = (keyof RegisteredRoutes & string) | (string & {});
+
 /**
  * The resolved Cloudflare Environment type.
- * If the user has augmented BuncfTypeRegistry with an 'env' property, use that.
- * Otherwise, fall back to CloudflareEnvBase.
  */
 export type CloudflareEnv = BuncfTypeRegistry extends { env: infer E } ? E : CloudflareEnvBase;
 
@@ -105,10 +100,14 @@ export interface IncomingRequestCfProperties {
 
 /**
  * CloudflareContext is the main context object available within request handlers.
- * The `env` property is automatically typed based on your module augmentation.
  */
 export interface CloudflareContext {
   env: CloudflareEnv;
   ctx: ExecutionContext;
   cf?: IncomingRequestCfProperties;
 }
+
+// --- GLOBAL MODULE AUGMENTATION ---
+
+
+

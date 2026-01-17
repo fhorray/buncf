@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeEach } from "bun:test";
 import { bunToCloudflare } from "../src/plugin";
+import * as path from "path";
 
 describe("bunToCloudflare plugin", () => {
-  const plugin = bunToCloudflare();
+  const entry = path.resolve(process.cwd(), "index.ts");
+  const plugin = bunToCloudflare(entry);
   const setup = plugin.setup as any;
 
   // Mock build object
@@ -34,11 +36,22 @@ describe("bunToCloudflare plugin", () => {
 
     // Mock Bun.file
     const originalFile = globalThis.Bun.file;
-    globalThis.Bun.file = (() => ({
-      text: async () => originalCode
-    })) as any;
+    globalThis.Bun.file = ((pathUri: string) => {
+      // Strict check for entry file to avoid returning code for index.html lookup
+      if (path.resolve(pathUri) === entry) {
+        return {
+          text: async () => originalCode,
+          exists: async () => true
+        };
+      }
+      if (pathUri.includes("runtime.")) return originalFile(pathUri);
+      return {
+        text: async () => "",
+        exists: async () => false
+      };
+    }) as any;
 
-    const result = await buildMock.callback({ path: "index.ts" });
+    const result = await buildMock.callback({ path: entry });
 
     // Restore Bun.file
     globalThis.Bun.file = originalFile;
@@ -53,11 +66,22 @@ describe("bunToCloudflare plugin", () => {
 
     // Mock Bun.file
     const originalFile = globalThis.Bun.file;
-    globalThis.Bun.file = (() => ({
-      text: async () => originalCode
-    })) as any;
+    globalThis.Bun.file = ((pathUri: string) => {
+      // Strict check for entry file to avoid returning code for index.html lookup
+      if (path.resolve(pathUri) === entry) {
+        return {
+          text: async () => originalCode,
+          exists: async () => true
+        };
+      }
+      if (pathUri.includes("runtime.")) return originalFile(pathUri);
+      return {
+        text: async () => "",
+        exists: async () => false
+      };
+    }) as any;
 
-    const result = await buildMock.callback({ path: "index.ts" });
+    const result = await buildMock.callback({ path: entry });
 
     // Restore Bun.file
     globalThis.Bun.file = originalFile;
@@ -71,17 +95,28 @@ describe("bunToCloudflare plugin", () => {
 
     // Mock Bun.file
     const originalFile = globalThis.Bun.file;
-    globalThis.Bun.file = (() => ({
-      text: async () => originalCode
-    })) as any;
+    globalThis.Bun.file = ((pathUri: string) => {
+      // Strict check for entry file to avoid returning code for index.html lookup
+      if (path.resolve(pathUri) === entry) {
+        return {
+          text: async () => originalCode,
+          exists: async () => true
+        };
+      }
+      if (pathUri.includes("runtime.")) return originalFile(pathUri);
+      return {
+        text: async () => "",
+        exists: async () => false
+      };
+    }) as any;
 
-    const result = await buildMock.callback({ path: "index.ts" });
+    const result = await buildMock.callback({ path: entry });
 
     // Restore Bun.file
     globalThis.Bun.file = originalFile;
 
-    expect(result.contents).toContain('// --- ADAPTER RUNTIME START ---');
-    expect(result.contents).toContain('// --- EXPORT FOR WORKER ---');
-    expect(result.contents).toContain('export default __worker_export__;');
+    expect(result.contents).toContain('// --- INJECTED RUNTIME');
+    expect(result.contents).toContain('// --- WORKER EXPORT ---');
+    expect(result.contents).toContain('const __worker_export__ =');
   });
 });

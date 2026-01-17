@@ -3,8 +3,10 @@ import { getCloudflareContext, runWithCloudflareContext } from "../src/context";
 import { initBuncfDev, getDevContext } from "../src/dev";
 
 describe("Cloudflare Context", () => {
-  it("should throw if called outside context and no dev init", () => {
-    expect(() => getCloudflareContext()).toThrow("getCloudflareContext() called outside of request context");
+  it("should return empty fallback context if called outside", () => {
+    const ctx = getCloudflareContext();
+    expect(ctx).toBeDefined();
+    expect(ctx.env).toEqual({});
   });
 
   it("should return context when running inside runWithCloudflareContext", () => {

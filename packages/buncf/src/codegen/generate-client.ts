@@ -7,7 +7,6 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import { type RouteTypeInfo } from "./api-scanner";
 
 /**
  * Generates the content of .buncf/api-client.ts

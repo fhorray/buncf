@@ -6,14 +6,14 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BuncfRouter } from 'buncf/router';
 import Layout from './_layout';
-import { routes } from '../.buncf/routes';
+import { routes, layouts } from '../.buncf/routes';
 
 const elem = document.getElementById('root');
 if (!elem) throw new Error('Root element not found');
 
 const app = (
   <StrictMode>
-    <BuncfRouter layout={Layout} routes={routes} />
+    <BuncfRouter layout={Layout} routes={routes} layouts={layouts} />
   </StrictMode>
 );
 

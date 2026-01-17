@@ -19,8 +19,11 @@ app.get("/users", async (c) => {
 })
 
 app.get('/users/:id', (c) => {
+  const id = c.req.param('id');
   return c.json({
-    id: c.req.param('id'),
+    id,
+    name: `User ${id}`,
+    email: `user${id}@example.com`,
     source: 'Hono'
   });
 });

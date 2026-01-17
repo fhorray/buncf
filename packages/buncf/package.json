@@ -46,7 +46,7 @@
     "bun": ">=1.0.0"
   },
   "dependencies": {
-    "chalk": "^5.6.2"
+
   },
   "devDependencies": {
     "@types/bun": "latest",
@@ -56,8 +56,8 @@
   "peerDependencies": {
     "typescript": "^5",
     "bun-plugin-tailwind": "^0.1.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.0.0"
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0"
   },
   "peerDependenciesMeta": {
     "bun-plugin-tailwind": {

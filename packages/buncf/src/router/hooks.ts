@@ -1,85 +1,140 @@
-/**
- * Router Hooks for React
- * 
- * Usage:
- * ```tsx
- * import { useRouter, useParams, useSearchParams, usePathname } from "buncf/router";
- * 
- * function MyComponent() {
- *   const router = useRouter();
- *   const params = useParams();
- *   const [query] = useSearchParams();
- *   const pathname = usePathname();
- * }
- * ```
- */
 
-import { useState, useEffect, useSyncExternalStore } from "react";
-import { routerStore, type RouteState } from "./client";
+import { useState, useEffect, useCallback } from 'react';
+import { routerStore } from './client';
+
+type FetcherState = "idle" | "submitting" | "loading";
+
+interface Fetcher<TData = any> {
+  state: FetcherState;
+  data: TData | undefined;
+  Form: React.ComponentType<any>;
+  submit: (target: string | Record<string, any> | FormData, options?: { method?: string, action?: string }) => void;
+  load: (href: string) => void;
+}
 
 /**
- * Main router hook
- * Returns navigation methods and current route state
+ * Hook to access the router (pathname, params, query, push, replace, back, etc)
+ * Reactive: will re-render when the route changes.
  */
 export function useRouter() {
-  const state = useSyncExternalStore(
-    routerStore.subscribe,
-    routerStore.getState,
-    routerStore.getState // SSR fallback
-  );
+  const [state, setState] = useState(routerStore.getState());
+
+  useEffect(() => {
+    const unsubscribe = routerStore.subscribe((newState) => {
+      setState(newState);
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
   return {
-    pathname: state.pathname,
-    params: state.params,
-    query: state.query,
+    ...state,
     push: routerStore.push,
     replace: routerStore.replace,
     back: routerStore.back,
     forward: routerStore.forward,
+    getState: routerStore.getState,
   };
 }
 
 /**
- * Get current route params
- * For dynamic routes like /blog/[slug], returns { slug: "..." }
+ * Hook to get route parameters (e.g., /users/:id)
  */
-export function useParams<T extends Record<string, string> = Record<string, string>>(): T {
-  const state = useSyncExternalStore(
-    routerStore.subscribe,
-    routerStore.getState,
-    routerStore.getState
-  );
-  return state.params as T;
+export function useParams() {
+  const router = useRouter();
+  return router.params;
 }
 
 /**
- * Get current search params (query string)
- * Returns [params, setParams] similar to useState
+ * Hook to get and set query parameters
+ * Returns [paramsObject, setParamsFunction]
  */
 export function useSearchParams(): [Record<string, string>, (params: Record<string, string>) => void] {
-  const state = useSyncExternalStore(
-    routerStore.subscribe,
-    routerStore.getState,
-    routerStore.getState
-  );
+  const router = useRouter();
 
-  const setSearchParams = (params: Record<string, string>) => {
-    const searchParams = new URLSearchParams(params);
-    const newPath = `${state.pathname}?${searchParams.toString()}`;
-    routerStore.replace(newPath);
-  };
+  const setSearchParams = useCallback((newParams: Record<string, string>) => {
+    const search = new URLSearchParams(newParams).toString();
+    const href = router.pathname + (search ? `?${search}` : "");
+    routerStore.push(href);
+  }, [router.pathname]);
 
-  return [state.query, setSearchParams];
+  return [router.query, setSearchParams];
 }
 
 /**
- * Get current pathname
+ * Hook to get the current pathname
  */
-export function usePathname(): string {
-  const state = useSyncExternalStore(
-    routerStore.subscribe,
-    routerStore.getState,
-    routerStore.getState
-  );
-  return state.pathname;
+export function usePathname() {
+  const router = useRouter();
+  return router.pathname;
+}
+
+/**
+ * Hook for data fetching and submissions without navigation
+ */
+export function useFetcher<TData = any>(): Fetcher<TData> {
+  const [state, setState] = useState<FetcherState>("idle");
+  const [data, setData] = useState<TData | undefined>(undefined);
+
+  const load = useCallback(async (href: string) => {
+    setState("loading");
+    try {
+      const res = await fetch(href);
+      if (res.headers.get("content-type")?.includes("application/json")) {
+        const json = await res.json();
+        setData(json);
+      } else {
+        setData(await res.text() as any);
+      }
+    } catch (e) {
+      console.error("[buncf] Fetcher load failed:", e);
+    } finally {
+      setState("idle");
+    }
+  }, []);
+
+  const submit = useCallback(async (target: string | Record<string, any> | FormData, options: { method?: string, action?: string } = {}) => {
+    setState("submitting");
+    const method = options.method || "POST";
+    const action = options.action || (typeof target === "string" ? target : window.location.pathname);
+
+    let body: any;
+    let headers: Record<string, string> = {};
+
+    if (target instanceof FormData) {
+      body = target;
+    } else if (typeof target === "object") {
+      body = JSON.stringify(target);
+      headers["Content-Type"] = "application/json";
+    }
+
+    try {
+      const res = await fetch(action, { method, headers, body });
+      if (res.headers.get("content-type")?.includes("application/json")) {
+        const json = await res.json();
+        setData(json);
+      }
+    } catch (e) {
+      console.error("[buncf] Fetcher submit failed:", e);
+    } finally {
+      setState("idle");
+    }
+  }, []);
+
+  return {
+    state,
+    data,
+    submit,
+    load,
+    Form: () => null // Placeholder
+  };
+}
+
+/**
+ * Helper hook for form submissions
+ */
+export function useSubmit() {
+  const fetcher = useFetcher();
+  return fetcher.submit;
 }

@@ -77,6 +77,30 @@ function extractTypesFromFile(filePath: string, routePath: string): RouteTypeInf
         filePath
       });
     }
+
+    // Hono / Express Style Handler Detection (Best Effort)
+    // Matches: .get("/path", ...) or .post('/path', ...)
+    // We assume these are mounted under /api since we are scanning src/api
+    const routerRegex = /\.(get|post|put|patch|delete)\s*\(\s*["']([^"']+)["']/gi;
+    while ((match = routerRegex.exec(content)) !== null) {
+      if (!match[1] || !match[2]) continue;
+      const method = match[1];
+      const rawPath = match[2];
+      const upperMethod = method.toUpperCase() as RouteTypeInfo["method"];
+
+      // Normalize path: Ensure it starts with /api if not present
+      // (Assuming Hono inside src/api is mounted at /api or relative to it)
+      let fullPath = rawPath;
+      if (!fullPath.startsWith("/")) fullPath = "/" + fullPath;
+      if (!fullPath.startsWith("/api")) fullPath = "/api" + fullPath;
+
+      results.push({
+        path: fullPath,
+        method: upperMethod,
+        response: "unknown", // Cannot easily infer return type from regex
+        filePath
+      });
+    }
   }
 
   return results;

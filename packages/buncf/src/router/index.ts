@@ -19,6 +19,10 @@ export type { PageMatch } from "./pages";
 
 // Client-side exports have been moved to "./react.ts"
 // and are exported via "buncf/router"
+export * from "./client";
+export * from "./Link";
+export * from "./RouterProvider";
+export * from "./hooks";
 
 
 export interface CreateAppOptions {
@@ -183,6 +187,27 @@ export function createApp(options: CreateAppOptions = {}) {
 
     // 3. Try serving static files from src (for dev mode)
     if (url.pathname.includes(".")) {
+
+      // 3a. Check for pre-built assets (from CLI watcher)
+      // The CLI builds client.tsx -> .buncf/assets/client.js with Tailwind support
+      let assetName = url.pathname;
+      if (assetName.match(/\.(tsx|ts|jsx)$/)) {
+        assetName = assetName.replace(/\.(tsx|ts|jsx)$/, ".js");
+      }
+      // Check .buncf/assets or .buncf/cloudflare/assets
+      const builtPaths = [
+        `./.buncf/assets${assetName}`,
+        `./.buncf/cloudflare/assets${assetName}`
+      ];
+
+      for (const builtPath of builtPaths) {
+        if (fs.existsSync(builtPath)) {
+          return new Response(Bun.file(builtPath), {
+            headers: { "Content-Type": getContentType(assetName) }
+          });
+        }
+      }
+
       // Check common source directories
       const possiblePaths = [
         `./src${url.pathname}`,
