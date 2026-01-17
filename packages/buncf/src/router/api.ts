@@ -11,6 +11,7 @@
 
 import * as fs from "fs";
 import * as path from "path";
+import { createRouteMatcher } from "./matcher";
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
 
@@ -36,9 +37,6 @@ export interface ApiRoute {
 }
 
 /**
- * Load API routes from a directory using Bun.FileSystemRouter
- */
-/**
  * Load API routes from a directory using Bun.FileSystemRouter or Static Map
  */
 export function createApiRouter(options: {
@@ -49,70 +47,46 @@ export function createApiRouter(options: {
   const { dir, prefix = "/api", staticRoutes } = options;
   const absoluteDir = path.resolve(dir);
 
-  let matchRoute: (path: string) => { filePath: string; params: Record<string, string>; importer?: () => Promise<ApiModule> } | null;
+  let matcher: ReturnType<typeof createRouteMatcher> | null = null;
 
   // Strategy 1: Static Routes (Bundled)
   if (staticRoutes && Object.keys(staticRoutes).length > 0) {
-    // console.log("[buncf] Using static routes:", Object.keys(staticRoutes));
+    const routeDefs = Object.entries(staticRoutes).map(([routePath, importer]) => ({
+      pattern: routePath,
+      data: { filePath: routePath, importer }
+    }));
+    matcher = createRouteMatcher(routeDefs);
+  }
 
-    // Tiny Router implementation for static map
-    const routes = Object.entries(staticRoutes).map(([routePath, importer]) => {
-      // Normalize Next.js style [param] to :param for matching
-      // But build time router likely gives us :param syntax if we use Bun.FileSystemRouter there
-      // Let's assume keys are "/api/users/:id" formatted.
+  let internalMatch: (p: string) => { params: Record<string, string>, data: { filePath: string, importer?: () => Promise<ApiModule> } } | null;
 
-      const paramNames: string[] = [];
-      const regexPath = routePath.replace(/:([a-zA-Z0-9_]+)/g, (_, paramName) => {
-        paramNames.push(paramName);
-        return "([^/]+)";
-      });
-      const regex = new RegExp(`^${regexPath}$`);
-      return { regex, paramNames, importer, routePath };
-    });
-
-    matchRoute = (currentPath: string) => {
-      // currentPath is relative to prefix e.g. /users/123
-      // But staticRoutes keys usually include prefix if generated from scanner that sees /api
-      // Let's assume the injected keys are FULL paths e.g. "/api/hello"
-
-      // Note: handleApiRequest logic strips prefix. 
-      // If our keys are "/api/...", we should NOT strip prefix or match against full path.
-      // Let's stick to matching against FULL pathname for simplicity in static mode?
-      // or adjust keys. 
-
-      // Adjust: If we match against internal 'apiPath', keys should be '/hello'.
-      // But Bun.FileSystemRouter returns patterns relative to mount?
-      // Let's assume keys are relative to 'dir' but with '/' start.
-
-      for (const route of routes) {
-        if (route.regex.test(currentPath)) {
-          const matches = currentPath.match(route.regex);
-          const params: Record<string, string> = {};
-          if (matches) {
-            matches.slice(1).forEach((val, i) => {
-              params[route.paramNames[i] as string] = val;
-            });
-          }
-          return { filePath: route.routePath, params, importer: route.importer };
-        }
-      }
-      return null;
+  if (matcher) {
+    internalMatch = (p) => {
+      const m = matcher!.match(p);
+      if (!m) return null;
+      return {
+        params: m.params,
+        data: m.data as { filePath: string, importer?: () => Promise<ApiModule> }
+      };
     };
-
   } else {
     // Strategy 2: Runtime FileSystemRouter (Dev/Node)
     if (!fs.existsSync(absoluteDir)) {
-      // console.log(`[buncf] No API directory found at ${dir}`);
-      matchRoute = () => null;
+      internalMatch = () => null;
     } else {
       const router = new Bun.FileSystemRouter({
         style: "nextjs",
         dir: absoluteDir,
         fileExtensions: [".ts", ".js", ".tsx", ".jsx"],
       });
-      matchRoute = (p) => {
+      internalMatch = (p) => {
         const m = router.match(p);
-        if (m) return { filePath: m.filePath, params: m.params };
+        if (m) {
+          return {
+            params: m.params,
+            data: { filePath: m.filePath }
+          };
+        }
         return null;
       };
     }
@@ -132,7 +106,7 @@ export function createApiRouter(options: {
     if (!pathname.startsWith(prefix)) return null;
     const apiPath = pathname.slice(prefix.length) || "/";
 
-    matchResult = matchRoute(apiPath);
+    matchResult = internalMatch(apiPath);
 
     if (!matchResult) {
       return null;
@@ -141,10 +115,10 @@ export function createApiRouter(options: {
     try {
       // Dynamically import the matched file
       let module: ApiModule;
-      if (matchResult.importer) {
-        module = await matchResult.importer();
+      if (matchResult.data.importer) {
+        module = await matchResult.data.importer();
       } else {
-        module = await import(matchResult.filePath);
+        module = await import(matchResult.data.filePath);
       }
 
       // Get handler for HTTP method
@@ -169,7 +143,7 @@ export function createApiRouter(options: {
 
       return await handler(enrichedReq);
     } catch (error: any) {
-      console.error(`[buncf] API Error in ${matchResult.filePath}:`, error);
+      console.error(`[buncf] API Error in ${matchResult.data.filePath}:`, error);
       return new Response(JSON.stringify({ error: error.message }), {
         status: 500,
         headers: { "Content-Type": "application/json" },
@@ -177,8 +151,78 @@ export function createApiRouter(options: {
     }
   }
 
+  /**
+   * Get routes in a format compatible with Bun.serve({ routes })
+   */
+  function getBunRoutes(): Record<string, BunRouteHandler> {
+    const bunRoutes: Record<string, BunRouteHandler> = {};
+
+    // Helper to wrap module execution
+    const createHandler = (filePath: string, importer?: () => Promise<ApiModule>): BunRouteHandler => {
+      return async (req) => {
+        try {
+          let module: ApiModule;
+          if (importer) {
+            module = await importer();
+          } else {
+            module = await import(filePath);
+          }
+
+          const method = req.method.toUpperCase() as HttpMethod;
+          const handler = module[method] || module.default;
+
+          if (!handler) {
+            return new Response(`Method ${method} not allowed`, { status: 405 });
+          }
+          return handler(req);
+        } catch (e: any) {
+          console.error(`[buncf] Error in ${filePath}:`, e);
+          return new Response(JSON.stringify({ error: e.message }), { status: 500 });
+        }
+      };
+    };
+
+    if (staticRoutes && Object.keys(staticRoutes).length > 0) {
+      Object.entries(staticRoutes).forEach(([routePath, importer]) => {
+        // Convert /api/users/[id] -> /api/users/:id
+        // Convert /api/[...catchall] -> /api/*
+        let bunPath = prefix + (routePath.startsWith("/") ? routePath : "/" + routePath);
+        bunPath = bunPath
+          .replace(/\[\.{3}([a-zA-Z0-9_]+)\]/g, "*") // [...slug] -> *
+          .replace(/\[([a-zA-Z0-9_]+)\]/g, ":$1");    // [id] -> :id
+
+        bunRoutes[bunPath] = createHandler(routePath, importer);
+      });
+    } else {
+      // Runtime Scan
+      if (fs.existsSync(absoluteDir)) {
+        const router = new Bun.FileSystemRouter({
+          style: "nextjs",
+          dir: absoluteDir,
+          fileExtensions: [".ts", ".js", ".tsx", ".jsx"],
+        });
+
+        Object.entries(router.routes).forEach(([routePath, filePath]) => {
+          // Bun router gives /users/[id]
+          let bunPath = prefix + (routePath === "/" ? "" : routePath);
+          bunPath = bunPath
+            .replace(/\[\.{3}([a-zA-Z0-9_]+)\]/g, "*") // [...slug] -> *
+            .replace(/\[([a-zA-Z0-9_]+)\]/g, ":$1");    // [id] -> :id
+
+          bunRoutes[bunPath] = createHandler(filePath);
+        });
+      }
+    }
+
+    return bunRoutes;
+  }
+
   return {
     handle: handleApiRequest,
+    getBunRoutes,
     reload: () => { }, // No-op for static
   };
 }
+
+// Add BunRouteHandler type if not imported
+import type { BunRouteHandler } from "../types";

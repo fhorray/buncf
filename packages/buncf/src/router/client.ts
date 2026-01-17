@@ -118,4 +118,12 @@ function createRouterStore() {
 }
 
 // Singleton store instance
-export const routerStore = createRouterStore();
+// We use a global symbol to ensure the store persists across HMR/bundles
+const storeSymbol = Symbol.for("buncf.router.store");
+const globalStore = (globalThis as any)[storeSymbol];
+
+export const routerStore: ReturnType<typeof createRouterStore> = globalStore || (() => {
+  const store = createRouterStore();
+  (globalThis as any)[storeSymbol] = store;
+  return store;
+})();

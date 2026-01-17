@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "bun:test";
-import { bunToCloudflare } from "../src/index";
+import { bunToCloudflare } from "../src/plugin";
 
 describe("bunToCloudflare plugin", () => {
   const plugin = bunToCloudflare();

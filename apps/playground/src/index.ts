@@ -1,10 +1,14 @@
-/**
- * Playground Server
- * 
- * Uses buncf createApp() for automatic file-system routing
- */
-import { serve } from "bun";
-import { createApp } from "buncf";
+import { createApp } from 'buncf';
 
-// Simple usage: createApp() scans ./src/api and ./src/pages automatically
-serve(createApp());
+// Initialize Buncf
+// Scans src/api (including [...route].ts for Hono) and src/pages
+const app = createApp();
+
+export default {
+  port: 3000,
+  routes: app.routes,
+  fetch: app.fetch,
+  development: app.development
+};
+
+// or just export default app

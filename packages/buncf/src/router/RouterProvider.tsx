@@ -141,21 +141,63 @@ export function BuncfRouter({
       // Dynamic Route Matching
       if (!importer) {
         const routeKeys = Object.keys(routes);
+        
+        // Sort keys to prioritize specific routes over catch-alls
+        // [param] (dynamic) vs [...param] (catch-all)
+        // More specific first.
+        routeKeys.sort((a, b) => {
+           const aCatchAll = a.includes('[...');
+           const bCatchAll = b.includes('[...');
+           if (aCatchAll && !bCatchAll) return 1;
+           if (!aCatchAll && bCatchAll) return -1;
+           return 0;
+        });
+
         for (const key of routeKeys) {
           // Convert /blog/[slug] to regex: ^/blog/([^/]+)$
           // Escape special chars except brackets
           if (!key.includes('[') && !key.includes('*')) continue; // optimization: only check dynamic routes
 
           const paramNames: string[] = [];
-          const regexStr = key
-            .replace(/\[([a-zA-Z0-9_]+)\]/g, (_, name) => {
-              paramNames.push(name);
-              return '([^/]+)';
-            })
-            // Escape slashes
-            .replace(/\//g, '\\/'); 
           
-          const regex = new RegExp(`^${regexStr}/?$`); // Allow optional trailing slash in regex match
+          // Escape regex special chars helper
+          const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+          // Build regex similar to matcher.ts logic
+          // Strategy: Split by dynamic segments, escape static parts, then join.
+          const segments = [];
+          let lastIndex = 0;
+          const placerRegex = /(\[\.\.\.([a-zA-Z0-9_]+)\])|(\[([a-zA-Z0-9_]+)\])|(:([a-zA-Z0-9_]+))/g;
+          let matchRegex;
+          
+          while ((matchRegex = placerRegex.exec(key)) !== null) {
+            // Static content before this match
+            const staticPart = key.slice(lastIndex, matchRegex.index);
+            if (staticPart) segments.push(escapeRegex(staticPart));
+            
+            if (matchRegex[2]) {
+              // [...param] -> (.*)
+              paramNames.push(matchRegex[2]);
+              segments.push('(.*)');
+            } else if (matchRegex[4]) {
+               // [param] -> ([^/]+)
+               paramNames.push(matchRegex[4]);
+               segments.push('([^/]+)');
+            } else if (matchRegex[6]) {
+               // :param -> ([^/]+)
+               paramNames.push(matchRegex[6]);
+               segments.push('([^/]+)');
+            }
+            lastIndex = placerRegex.lastIndex;
+          }
+          
+          // Remaining static content
+          const remaining = key.slice(lastIndex);
+          if (remaining) segments.push(escapeRegex(remaining));
+          
+          const regexStr = segments.join('');
+          
+          const regex = new RegExp(`^${regexStr}/?$`); // Allow optional trailing slash
           const match = pathname.match(regex);
           
           if (match) {
@@ -163,7 +205,7 @@ export function BuncfRouter({
             match.slice(1).forEach((val, i) => {
               const paramName = paramNames[i];
               if (paramName) {
-                matchedParams[paramName] = decodeURIComponent(val);
+                matchedParams[paramName] = decodeURIComponent(val || '');
               }
             });
             break; 
@@ -184,9 +226,6 @@ export function BuncfRouter({
       } else {
         // Ensure params are cleared if no match (e.g. going from /blog/1 to /about)
         // routerStore.setParams({}); 
-        // actually `push` clears params.
-        // But if we landed on a static route that implies empty params, we might want to clear them?
-        // Let's rely on push/replace clearing them.
       }
 
       // 2. Import page component

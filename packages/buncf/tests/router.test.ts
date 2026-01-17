@@ -53,11 +53,11 @@ describe("Pages Router (Static Map Strategy)", () => {
   });
 
   // Testing the trailing slash behavior explicitly
-  it("should fail strictly on trailing slash without normalization", () => {
-    // The router expects normalized paths.
-    // matches /about
+  it("should match loosely on trailing slash (normalized)", () => {
+    // The router normalizes paths now.
     const match = router.match(new Request("http://localhost/about/"));
-    expect(match).toBeNull();
+    expect(match).not.toBeNull();
+    expect(match?.filePath).toBe("src/pages/about.tsx");
   });
 
   it("should match URL encoded dynamic params", () => {

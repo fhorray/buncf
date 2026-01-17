@@ -7,6 +7,9 @@
 import { createApiRouter, type ApiHandler, type HttpMethod } from "./api";
 import { createPagesRouter, type PageMatch } from "./pages";
 import * as fs from "fs";
+import { initBuncfDev, getDevContext } from "../dev";
+import { runWithCloudflareContext, getCloudflareContext } from "../context";
+import type { CloudflareEnv, ExecutionContext } from "../types";
 
 // Server-side exports
 export { createApiRouter } from "./api";
@@ -31,6 +34,8 @@ export interface CreateAppOptions {
   indexHtmlContent?: string;
   /** Injected static route manifest for build-time router (Internal use) */
   staticRoutes?: { api?: any; pages?: any };
+  /** Custom error handler for unhandled exceptions */
+  onError?: (error: Error, request: Request) => Response | Promise<Response>;
 }
 
 /**
@@ -69,6 +74,12 @@ export function createApp(options: CreateAppOptions = {}) {
     }
     if (htmlPath && fs.existsSync(htmlPath)) {
       indexHtmlContent = fs.readFileSync(htmlPath, "utf-8");
+
+      // Rewrite Asset Paths for Dev
+      // This ensures ./client.tsx becomes /client.tsx, fixing deep nested routes (e.g., /users/1)
+      indexHtmlContent = indexHtmlContent
+        .replace(/src=["'](\.?\/)(.*)["']/g, 'src="/$2"')
+        .replace(/href=["'](\.?\/)(.*)["']/g, 'href="/$2"');
     }
   }
 
@@ -77,6 +88,11 @@ export function createApp(options: CreateAppOptions = {}) {
     console.log(`\n  \x1b[36m🚀 Buncf Development Server\x1b[0m`);
     console.log(`  \x1b[32m✔\x1b[0m Local:    \x1b[34mhttp://localhost:${port}\x1b[0m`);
     console.log(`  \x1b[32m✔\x1b[0m Ready in: \x1b[33msrc/api/\x1b[0m and \x1b[33msrc/pages/\x1b[0m\n`);
+
+    // Initialize Miniflare for bindings (Lazy)
+    initBuncfDev().catch(err => {
+      console.error("Failed to initialize dev bindings:", err);
+    });
   }
 
   /**
@@ -84,19 +100,40 @@ export function createApp(options: CreateAppOptions = {}) {
    */
   async function fetch(req: Request): Promise<Response> {
     if (process.env.NODE_ENV !== "production") {
+      const existing = getCloudflareContext();
+      // Only wrap if we don't already have a real environment (avoids shadowing in production)
+      if (existing && existing.env && Object.keys(existing.env).length > 0) {
+        return handleRequest(req, new URL(req.url));
+      }
+
       const url = new URL(req.url);
       const method = req.method;
       const path = url.pathname;
       const start = performance.now();
 
-      const response = await handleRequest(req, url);
+      let devCtx = getDevContext();
+      if (!devCtx) {
+        // Try waiting if it's still initializing
+        const { waitForDevContext } = await import("../dev");
+        devCtx = await waitForDevContext();
+      }
+      // Even if Miniflare failed, we provide a mock context so getCloudflareContext() doesn't throw
+      const env = (devCtx?.env || {}) as CloudflareEnv;
+      const ctx: ExecutionContext = {
+        waitUntil: (promise: Promise<any>) => { void promise; },
+        passThroughOnException: () => { }
+      };
 
-      const duration = (performance.now() - start).toFixed(2);
-      const status = response.status;
-      const statusColor = status >= 500 ? "\x1b[31m" : status >= 400 ? "\x1b[33m" : status >= 300 ? "\x1b[36m" : "\x1b[32m";
+      return runWithCloudflareContext({ env, ctx, cf: {} }, async () => {
+        const response = await handleRequest(req, url);
 
-      console.log(`  \x1b[90m${new Date().toLocaleTimeString()}\x1b[0m ${method} ${path} - ${statusColor}${status}\x1b[0m \x1b[90m(${duration}ms)\x1b[0m`);
-      return response;
+        const duration = (performance.now() - start).toFixed(2);
+        const status = response.status;
+        const statusColor = status >= 500 ? "\x1b[31m" : status >= 400 ? "\x1b[33m" : status >= 300 ? "\x1b[36m" : "\x1b[32m";
+
+        console.log(`  \x1b[90m${new Date().toLocaleTimeString()}\x1b[0m ${method} ${path} - ${statusColor}${status}\x1b[0m \x1b[90m(${duration}ms)\x1b[0m`);
+        return response;
+      });
     }
 
     return handleRequest(req, new URL(req.url));
@@ -257,7 +294,9 @@ export function createApp(options: CreateAppOptions = {}) {
 
   return {
     fetch,
-    routes: {}, // Empty - we handle everything in fetch
+    routes: {
+      ...(apiRouter ? apiRouter.getBunRoutes() : {}),
+    },
     development: process.env.NODE_ENV !== "production",
   };
 }

@@ -17,7 +17,7 @@ export default function UsersPage() {
     fetch('/api/users')
       .then((res) => res.json())
       .then((data) => {
-        setUsers(data.users || []);
+        setUsers(data as any[]);
         setLoading(false);
       })
       .catch(() => setLoading(false));

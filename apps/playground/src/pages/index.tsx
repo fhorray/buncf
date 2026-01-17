@@ -53,7 +53,7 @@ export default function HomePage() {
               </Link>
             </li>
             <li>
-              <Link href="/blog/hello-world" className="flex items-center gap-2 text-sm font-medium text-primary hover:underline">
+              <Link href="/about" className="flex items-center gap-2 text-sm font-medium text-primary hover:underline">
                 <span>→</span> Hello World Post
               </Link>
             </li>

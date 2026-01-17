@@ -10,13 +10,14 @@
 
 import React, { type AnchorHTMLAttributes, type MouseEvent } from 'react';
 import { routerStore } from './client';
+import type { RoutePath } from "../types";
 
 export interface LinkProps extends Omit<
   AnchorHTMLAttributes<HTMLAnchorElement>,
   'href'
 > {
   /** Target URL */
-  href: string;
+  href: RoutePath;
   /** Prefetch on hover (not implemented yet) */
   prefetch?: boolean;
   /** Replace instead of push */

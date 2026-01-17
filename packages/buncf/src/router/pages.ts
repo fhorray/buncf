@@ -10,6 +10,7 @@
 
 import * as fs from "fs";
 import * as path from "path";
+import { createRouteMatcher } from "./matcher";
 
 export interface PageRoute {
   pattern: string;
@@ -25,9 +26,6 @@ export interface PageMatch {
 }
 
 /**
- * Create a pages router from a directory
- */
-/**
  * Create a pages router from a directory (or static map)
  */
 export function createPagesRouter(options: {
@@ -37,52 +35,37 @@ export function createPagesRouter(options: {
   const { dir, staticRoutes } = options;
   const absoluteDir = path.resolve(dir);
 
-  let matchRoute: (path: string) => { filePath: string; params: Record<string, string> } | null;
-  let getRouteList: () => string[];
+  // Unified matcher interface
+  let matcher: ReturnType<typeof createRouteMatcher> | null = null;
 
   // Strategy 1: Static Routes (Bundled)
   if (staticRoutes && Object.keys(staticRoutes).length > 0) {
-    const routes = Object.entries(staticRoutes).map(([routePath, filePath]) => {
-      // Convert Next.js style [param] to :param for matching if needed, 
-      // but Bun Router output usually gives us :param or we can regex match.
-      // Let's assume keys are like "/blog/[slug]" or "/about".
+    const routeDefs = Object.entries(staticRoutes).map(([pattern, filePath]) => ({
+      pattern,
+      data: { filePath }
+    }));
+    matcher = createRouteMatcher(routeDefs);
+  }
 
-      const paramNames: string[] = [];
-      // Regex to match dynamic segments [slug]
-      const regexPath = routePath
-        .replace(/\[([a-zA-Z0-9_]+)\]/g, (_, paramName) => {
-          paramNames.push(paramName);
-          return "([^/]+)";
-        })
-        .replace(/\//g, "\\/"); // Escape slashes
+  // Internal matching function wrapper
+  // We explicitly define return type to match what we need: data.filePath and params
+  let internalMatch: (p: string) => { params: Record<string, string>, data: { filePath: string } } | null;
+  let getRouteList: () => string[];
 
-      const regex = new RegExp(`^${regexPath}$`);
-      return { regex, paramNames, routePath, filePath };
-    });
-
-    matchRoute = (currentPath: string) => {
-      for (const route of routes) {
-        if (route.regex.test(currentPath)) {
-          const matches = currentPath.match(route.regex);
-          const params: Record<string, string> = {};
-          if (matches) {
-            matches.slice(1).forEach((val, i) => {
-              params[route.paramNames[i] as string] = val;
-            });
-          }
-          return { filePath: route.filePath, params };
-        }
-      }
-      return null; // No match
+  if (matcher) {
+    internalMatch = (p) => {
+      const m = matcher!.match(p);
+      if (!m) return null;
+      return {
+        params: m.params,
+        data: m.data as { filePath: string } // Cast because RouteDefinition<T> T is inferred or explicit
+      };
     };
-
-    getRouteList = () => Object.keys(staticRoutes);
-
+    getRouteList = () => matcher!.getPatterns();
   } else {
-    // Strategy 2: Runtime FileSystemRouter
+    // Strategy 2: Runtime FileSystemRouter (Dev/Node)
     if (!fs.existsSync(absoluteDir)) {
-      // console.log(`[buncf] No pages directory found at ${dir}`);
-      matchRoute = () => null;
+      internalMatch = () => null;
       getRouteList = () => [];
     } else {
       const router = new Bun.FileSystemRouter({
@@ -91,16 +74,18 @@ export function createPagesRouter(options: {
         fileExtensions: [".tsx", ".jsx", ".ts", ".js"],
       });
 
-      matchRoute = (p) => {
+      internalMatch = (p) => {
         const m = router.match(p);
-        if (m) return { filePath: m.filePath, params: m.params };
+        if (m) {
+          return {
+            params: m.params,
+            data: { filePath: m.filePath }
+          };
+        }
         return null;
       };
 
       getRouteList = () => {
-        // Runtime scan logic
-        // We can use the existing scanDir logic or just iterate router.routes if public
-        // But scanDir is fine.
         const routes: string[] = [];
         const scanDir = (d: string, prefix: string = "") => {
           try {
@@ -132,11 +117,11 @@ export function createPagesRouter(options: {
     const url = typeof req === "string" ? new URL(req, "http://localhost") : new URL(req.url);
     const pathname = url.pathname;
 
-    const result = matchRoute(pathname);
+    const result = internalMatch(pathname);
     if (!result) return null;
 
     return {
-      filePath: result.filePath,
+      filePath: result.data.filePath,
       pathname: pathname,
       params: result.params || {},
       query: Object.fromEntries(url.searchParams),

@@ -7,6 +7,7 @@ import type {
   CloudflareEnv,
   BunHandlerFunction
 } from './types';
+import { runWithCloudflareContext } from './context';
 
 // --- BUN-CF-ADAPTER RUNTIME (Optimized & Typed) ---
 // Provides O(1) matching, URL normalization, proxies, and asset handling.
@@ -49,13 +50,15 @@ async function globalServeAsset(req: Request, assetPrefix: string = "assets"): P
     const assetUrl = new URL(req.url);
     assetUrl.pathname = assetPath;
 
-    // console.log(`[Buncf Fallback] Attempting ASSETS: ${assetPath}`);
 
     // Helper to fetch
     const fetchAsset = async (path: string) => {
       const u = new URL(req.url);
       u.pathname = path;
-      return assetsBinding.fetch(new Request(u.toString(), { method: 'GET' }));
+      const r = new Request(u.toString(), { method: 'GET' });
+      const res = await assetsBinding.fetch(r);
+      // Debug: console.log(`[Buncf Asset] ${path} -> ${res.status}`);
+      return res;
     };
 
     try {
@@ -107,6 +110,8 @@ async function globalServeAsset(req: Request, assetPrefix: string = "assets"): P
       console.error(`[Buncf Fallback] ASSETS error: ${e.message}`);
       return null;
     }
+  } else {
+    // Warn only in dev: ASSETS binding missing
   }
   return null;
 }
@@ -250,10 +255,19 @@ export default {
   async fetch(request: Request, env: CloudflareEnv, ctx: any) {
     // Sync Env
     try {
+      // Polyfill process for Cloudflare
+      if (typeof process === "undefined") globalThis.process = { env: {} } as any;
+      if (!process.env) process.env = {};
+
       const stringEnv: Record<string, string> = {};
       for (const key in env) {
-        if (typeof env[key] === 'string') stringEnv[key] = env[key];
+        if (typeof env[key] === 'string') {
+          stringEnv[key] = env[key];
+          process.env[key] = env[key];
+        }
       }
+
+      // Sync to Bun shim
       __BunShim__.env = { ...stringEnv };
       if (env.ASSETS) (__BunShim__ as any).ASSETS = env.ASSETS;
 
@@ -261,7 +275,12 @@ export default {
         (globalThis.Bun as any).env = { ...stringEnv };
         if (env.ASSETS) (globalThis.Bun as any).ASSETS = env.ASSETS;
       }
-    } catch { }
+
+      // Debug Env (Visible in Realtime Logs)
+      // console.log("[runtime] Env Keys:", Object.keys(env));
+    } catch (e) {
+      console.error("[runtime] Env sync failed:", e);
+    }
 
     if (!__handler__ || !__handler__.fetch) {
       return new Response("Error: Bun.serve not initialized or missing fetch handler", { status: 500 });
@@ -269,12 +288,12 @@ export default {
 
     try {
       // Execute User Logic
-      const response = await __handler__.fetch(request, {
-        ...(__handler__ || {}),
-      });
+      const response = await runWithCloudflareContext(
+        { env, ctx, cf: (request as any).cf },
+        () => __handler__!.fetch!(request, { ...(__handler__ || {}) })
+      );
 
       // --- ASSET FALLBACK FOR USER HANDLERS ---
-      // If user returns 404 on GET, try to find matching asset in Cloudflare
       // If user returns 404 on GET, try to find matching asset in Cloudflare
       if (response.status === 404 && request.method === "GET") {
         const assetResponse = await globalServeAsset(request, __handler__.assetPrefix);

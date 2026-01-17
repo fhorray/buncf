@@ -1,30 +1,31 @@
 #!/usr/bin/env bun
 import { spawn } from "bun";
 import { bunToCloudflare } from "./plugin";
+// Lazy loaded: generateAllApiTypes (imported dynamically in build/dev commands)
 import * as fs from "fs";
 import * as path from "path";
+import chalk from "chalk";
 
 // Package version (sync with package.json)
 const VERSION = "0.1.0";
 
-// ANSI color codes for terminal output
-const colors = {
-  reset: "\x1b[0m",
-  bright: "\x1b[1m",
-  dim: "\x1b[2m",
-  green: "\x1b[32m",
-  yellow: "\x1b[33m",
-  blue: "\x1b[34m",
-  red: "\x1b[31m",
-  cyan: "\x1b[36m",
+const log = {
+  info: (msg: string) => console.log(chalk.blue(`ℹ `) + msg),
+  success: (msg: string) => console.log(chalk.green(`✓ `) + msg),
+  warn: (msg: string) => console.log(chalk.yellow(`⚠ `) + msg),
+  error: (msg: string) => console.error(chalk.red(`✗ `) + msg),
+  step: (msg: string) => console.log(chalk.dim(`[${new Date().toLocaleTimeString()}] `) + chalk.cyan(msg)),
+  title: (msg: string) => console.log("\n" + chalk.bold.cyan(msg) + "\n"),
 };
 
-const log = {
-  info: (msg: string) => console.log(`${colors.blue}ℹ${colors.reset} ${msg}`),
-  success: (msg: string) => console.log(`${colors.green}✓${colors.reset} ${msg}`),
-  warn: (msg: string) => console.log(`${colors.yellow}⚠${colors.reset} ${msg}`),
-  error: (msg: string) => console.error(`${colors.red}✗${colors.reset} ${msg}`),
-  step: (msg: string) => console.log(`${colors.dim}[${new Date().toLocaleTimeString()}]${colors.reset} ${msg}`),
+const showBanner = () => {
+  console.log(chalk.cyan(`
+   __                            ___ 
+  |  |--.--.--.-----..----.----.|  _|
+  |  _  |  |  |     ||  __|  __||  _|
+  |_____|_____|__|__||____|____||_|  v${VERSION} (DEV-MANUAL-SCAN)
+  ${chalk.dim("Build & Deploy Bun to Cloudflare Workers")}
+`));
 };
 
 // Parse command and flags
@@ -41,155 +42,582 @@ const entrypoints = ["./src/index.ts", "./index.ts", "./src/index.js", "./index.
 
 // Help text
 const showHelp = () => {
+  showBanner();
   console.log(`
-${colors.bright}buncf${colors.reset} - Deploy Bun applications to Cloudflare Workers
+${chalk.bold("USAGE")}
+  ${chalk.cyan("buncf")} <command> [options]
 
-${colors.bright}USAGE${colors.reset}
-  buncf <command> [options]
+${chalk.bold("COMMANDS")}
+  ${chalk.cyan("init")}        Scaffold a new project
+  ${chalk.cyan("build")}       Build for production
+  ${chalk.cyan("deploy")}      Build and deploy to Cloudflare Workers
+  ${chalk.cyan("dev")}         Start development server with bindings
 
-${colors.bright}COMMANDS${colors.reset}
-  init        Scaffold a new project
-  build       Build for production
-  deploy      Build and deploy to Cloudflare Workers
-  dev         (deprecated) Use 'bun run --watch' instead
+${chalk.bold("OPTIONS")}
+  ${chalk.yellow("-h, --help")}      Show this help message
+  ${chalk.yellow("-v, --version")}   Show version number
+  ${chalk.yellow("--verbose")}       Enable verbose output
+  ${chalk.yellow("--remote")}        Use remote Cloudflare bindings in dev
 
-${colors.bright}OPTIONS${colors.reset}
-  -h, --help      Show this help message
-  -v, --version   Show version number
-      --verbose   Enable verbose output
+${chalk.bold("EXAMPLES")}
+  ${chalk.dim("$")} buncf init               Create new project
+  ${chalk.dim("$")} buncf build              Build production bundle
+  ${chalk.dim("$")} buncf deploy             Deploy to Cloudflare
+  ${chalk.dim("$")} buncf dev --remote       Dev with live data
 
-${colors.bright}EXAMPLES${colors.reset}
-  buncf init               Create new project
-  buncf build              Build production bundle
-  buncf deploy             Deploy to Cloudflare
-  buncf --help             Show help
-
-${colors.bright}LEARN MORE${colors.reset}
-  Documentation: https://github.com/francyelton/buncf
+${chalk.bold("LEARN MORE")}
+  Documentation: ${chalk.underline.blue("https://github.com/fhorray/buncf")}
 `);
 };
 
 // Function handle init command
-const initProject = async () => {
-  log.info("Initializing new buncf project...");
+async function initProject(projectNameArg?: string) {
+  console.clear();
+  showBanner();
 
-  const files = {
-    "package.json": JSON.stringify({
-      name: "my-buncf-app",
+  let projectName = projectNameArg;
+  let template = "default";
+
+  if (!projectName) {
+    const readline = require("node:readline").createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+
+    projectName = await new Promise(resolve => {
+      readline.question(chalk.cyan("  What is your project named? ") + chalk.dim("(my-buncf-app) "), (answer: string) => {
+        resolve(answer.trim() || "my-buncf-app");
+      });
+    });
+
+    template = await new Promise(resolve => {
+      readline.question(chalk.cyan("  Which template would you like to use? ") + chalk.dim("(default/hono) "), (answer: string) => {
+        readline.close();
+        const t = answer.trim().toLowerCase();
+        resolve(t === "hono" ? "hono" : "default");
+      });
+    });
+  }
+
+  console.log("");
+  const projectDir = projectName === "." ? process.cwd() : path.join(process.cwd(), projectName!);
+  const isCurrentDir = projectName === ".";
+
+  // Step 1: Create directory
+  console.log(chalk.cyan("  Creating project structure..."));
+  console.log("");
+
+  if (!isCurrentDir && !fs.existsSync(projectDir)) {
+    fs.mkdirSync(projectDir, { recursive: true });
+  }
+
+  const dirs = ["src", "src/api", "src/pages", "public"];
+  for (const dir of dirs) {
+    const fullPath = path.join(projectDir, dir);
+    if (!fs.existsSync(fullPath)) fs.mkdirSync(fullPath, { recursive: true });
+  }
+
+  // Generate all files
+  const files: { path: string; content: string }[] = [];
+
+  const dependencies: Record<string, string> = {
+    react: "^19.0.0",
+    "react-dom": "^19.0.0",
+    "bun-plugin-tailwind": "latest"
+  };
+
+  if (template === "hono") {
+    dependencies["hono"] = "latest";
+  }
+
+  // package.json
+  files.push({
+    path: "package.json",
+    content: JSON.stringify({
+      name: isCurrentDir ? path.basename(process.cwd()) : projectName,
       module: "src/index.ts",
       type: "module",
       scripts: {
-        "dev": "buncf dev",
-        "build": "buncf build",
-        "deploy": "buncf deploy"
-      },
-      dependencies: {
-        "react": "^18.3.0",
-        "react-dom": "^18.3.0"
+        dev: "bun buncf dev",
+        build: "bun buncf build",
+        deploy: "bun buncf deploy",
+        "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
       },
       devDependencies: {
-        "buncf": "latest",
+        buncf: "latest",
+        wrangler: "latest",
+        miniflare: "latest",
         "@types/bun": "latest",
-        "bun-plugin-tailwind": "latest",
-        "@types/react": "^18.3.0",
-        "@types/react-dom": "^18.3.0"
-      }
-    }, null, 2),
-    "tsconfig.json": JSON.stringify({
+        "@types/react": "latest",
+        "@types/react-dom": "latest"
+      },
+      dependencies
+    }, null, 2)
+  });
+
+  // wrangler.jsonc
+  files.push({
+    path: "wrangler.jsonc",
+    content: JSON.stringify({
+      name: isCurrentDir ? path.basename(process.cwd()) : projectName,
+      main: "./.buncf/cloudflare/worker.js",
+      compatibility_date: new Date().toISOString().split("T")[0],
+      compatibility_flags: ["nodejs_compat"],
+      assets: { directory: ".buncf/cloudflare/assets", binding: "ASSETS" }
+    }, null, 2)
+  });
+
+  // tsconfig.json
+  files.push({
+    path: "tsconfig.json",
+    content: JSON.stringify({
       compilerOptions: {
         lib: ["ESNext", "DOM"],
-        module: "esnext",
-        target: "esnext",
-        moduleResolution: "bundler",
+        target: "ESNext",
+        module: "Preserve",
         moduleDetection: "force",
-        allowImportingTsExtensions: true,
-        noEmit: true,
-        composite: true,
-        strict: true,
-        downlevelIteration: true,
-        skipLibCheck: true,
         jsx: "react-jsx",
-        allowSyntheticDefaultImports: true,
-        forceConsistentCasingInFileNames: true,
         allowJs: true,
-        types: ["bun-types"]
+        moduleResolution: "bundler",
+        allowImportingTsExtensions: true,
+        verbatimModuleSyntax: true,
+        noEmit: true,
+        strict: true,
+        skipLibCheck: true,
+        noFallthroughCasesInSwitch: true,
+        types: ["./cloudflare-env.d.ts", "./buncf-env.d.ts"],
+        baseUrl: ".",
+        paths: {
+          "$api": ["./.buncf/api-client.ts"],
+          "$routes": ["./.buncf/routes.ts"]
+        }
       }
-    }, null, 2),
-    "wrangler.jsonc": JSON.stringify({
-      name: "my-buncf-app",
-      main: "./.buncf/cloudflare/worker.js",
-      compatibility_date: new Date().toISOString().split('T')[0],
-      compatibility_flags: ["nodejs_compat"],
-      assets: {
-        directory: ".buncf/cloudflare/assets",
-        binding: "ASSETS"
-      }
-    }, null, 2),
-    "src/index.ts": `import { serve } from "bun";
-import index from "./index.html";
+    }, null, 2)
+  });
 
-serve({
-  routes: {
-    "/": index,
-    "/api/hello": () => Response.json({ message: "Hello World!" })
+  // buncf-env.d.ts
+  files.push({
+    path: "buncf-env.d.ts",
+    content: `/// <reference lib="dom" />
+/// <reference lib="dom.iterable" />
+
+// Generated by buncf init
+
+declare module "*.svg" {
+  const content: string;
+  export default content;
+}
+
+declare module "*.png" {
+  const content: string;
+  export default content;
+}
+
+declare module "*.jpg" {
+  const content: string;
+  export default content;
+}
+
+declare module "*.webp" {
+  const content: string;
+  export default content;
+}
+
+declare module "*.gif" {
+  const content: string;
+  export default content;
+}
+
+declare module "*.html" {
+  const content: string;
+  export default content;
+}
+
+declare module "*.module.css" {
+  const classes: { readonly [key: string]: string };
+  export default classes;
+}
+
+/**
+ * Buncf Type Augmentation
+ * 
+ * This file connects your wrangler-generated CloudflareEnv types to buncf.
+ * It will NOT be overwritten by \`bun cf-typegen\`.
+ */
+
+// Import something from buncf to make this a module augmentation, not ambient declaration
+import type {} from "buncf";
+
+declare module "buncf" {
+  // Augment the type registry to use your CloudflareEnv
+  interface BuncfTypeRegistry {
+    env: CloudflareEnv;
   }
-});
-`,
-    "src/index.html": `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Buncf App</title>
-    <script type="module" src="./client.tsx"></script>
-    <link rel="stylesheet" href="./globals.css">
-</head>
-<body>
-    <div id="root"></div>
-</body>
-</html>`,
-    "src/client.tsx": `import { createRoot } from "react-dom/client";
-import "./globals.css";
+}
+`
+  });
 
-const App = () => {
+  // .gitignore
+  files.push({
+    path: ".gitignore",
+    content: `.buncf
+node_modules
+dist
+      .env
+      .env.local
+      `
+  });
+
+  // src/index.ts
+  files.push({
+    path: "src/index.ts",
+    content: `import { createApp } from "buncf";
+
+  export default createApp({
+    indexHtml: "./src/index.html"
+  });
+  `
+  });
+
+  // src/index.html
+  files.push({
+    path: "src/index.html",
+    content: `< !DOCTYPE html >
+    <html lang="en" >
+      <head>
+      <meta charset="UTF-8" >
+        <meta name="viewport" content = "width=device-width, initial-scale=1.0" >
+          <title>Buncf App </title>
+            < link rel = "stylesheet" href = "./globals.css" >
+              </head>
+              < body >
+              <div id="root" > </div>
+                < script type = "module" src = "./client.tsx" > </script>
+                  </body>
+                  </html>
+                    `
+  });
+
+  // src/globals.css
+  files.push({
+    path: "src/globals.css",
+    content: `@import "tailwindcss";
+
+:root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+
+body {
+    background: var(--background);
+    color: var(--foreground);
+    font - family: system - ui, -apple - system, sans - serif;
+  }
+  `
+  });
+
+  // src/client.tsx
+  files.push({
+    path: "src/client.tsx",
+    content: `import { StrictMode } from "react";
+  import { createRoot } from "react-dom/client";
+  import { BuncfRouter } from "buncf/router";
+  import { routes } from "$routes";
+  import "./globals.css";
+
+  function Layout({ children }: { children: React.ReactNode }) {
     return (
-        <div className="flex items-center justify-center h-screen bg-gray-100">
-            <h1 className="text-4xl font-bold text-blue-600">Hello form Bun + Cloudflare!</h1>
-        </div>
+      <div className= "min-h-screen bg-gradient-to-br from-gray-900 to-black text-white" >
+      <nav className="border-b border-gray-800 px-6 py-4" >
+        <span className="font-bold text-xl" >🔥 Buncf </span>
+          </nav>
+          < main className = "container mx-auto px-6 py-12" >
+            { children }
+            </main>
+            </div>
+  );
+  }
+
+  const root = document.getElementById("root");
+  if (root) {
+    createRoot(root).render(
+      <StrictMode>
+      <BuncfRouter layout={ Layout } routes = { routes } />
+      </StrictMode>
     );
-};
+  }
+  `
+  });
 
-const root = createRoot(document.getElementById("root")!);
-root.render(<App />);
-`,
-    "src/globals.css": `@import "tailwindcss";`
-  };
+  // src/pages/index.tsx
+  files.push({
+    path: "src/pages/index.tsx",
+    content: `import { Link } from "buncf/router";
 
-  // Create src folder
-  if (!fs.existsSync("src")) {
-    fs.mkdirSync("src");
+  export default function HomePage() {
+    return (
+      <div className= "max-w-2xl" >
+      <h1 className="text-5xl font-bold mb-6 bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent" >
+        Welcome to Buncf
+          </h1>
+          < p className = "text-xl text-gray-400 mb-8" >
+            Build and deploy Bun applications to Cloudflare Workers with zero configuration.
+      </p>
+              < div className = "flex gap-4" >
+                <Link href="/about" className = "px-6 py-3 bg-cyan-600 hover:bg-cyan-500 rounded-lg font-medium transition" >
+                  Learn More
+                    </Link>
+                    < a href = "/api/hello" className = "px-6 py-3 border border-gray-700 hover:border-gray-500 rounded-lg font-medium transition" >
+                      Try API →
+    </a>
+      </div>
+      </div>
+  );
+  }
+  `
+  });
+
+  // src/pages/about.tsx
+  files.push({
+    path: "src/pages/about.tsx",
+    content: `import { Link } from "buncf/router";
+
+  export default function AboutPage() {
+    return (
+      <div className= "max-w-2xl" >
+      <Link href="/" className = "text-cyan-400 hover:underline mb-4 inline-block" >← Back </Link>
+        < h1 className = "text-4xl font-bold mb-4" > About Buncf </h1>
+          < p className = "text-gray-400" >
+            Buncf is a framework for deploying Bun applications to Cloudflare Workers.
+        It provides file - system routing, React support, and type - safe API clients.
+      </p>
+      </div>
+  );
+  }
+  `
+  });
+
+  // src/api/hello.ts OR src/api/[...route].ts
+  if (template === "hono") {
+    // Hono Template
+    files.push({
+      path: "src/api/[...route].ts",
+      content: `import { Hono } from 'hono';
+
+const app = new Hono().basePath('/api');
+
+app.get('/hello', (c) => {
+  return c.json({
+    message: 'Hello form Hono inside Buncf!',
+    path: c.req.path
+  });
+});
+
+app.get('/users/:id', (c) => {
+    return c.json({
+        id: c.req.param('id'),
+        source: 'Hono'
+    });
+});
+
+// Catch-all for other Hono routes
+app.all('*', (c) => {
+    return c.json({ error: 'Not Found in Hono' }, 404);
+});
+
+export default app.fetch;
+`
+    });
+  } else {
+    // Default Template
+    files.push({
+      path: "src/api/hello.ts",
+      content: `import { defineHandler } from "buncf";
+
+interface HelloResponse {
+  message: string;
+  timestamp: string;
+}
+
+export const GET = defineHandler<{}, HelloResponse>((req) => {
+  return Response.json({
+    message: "Hello from Buncf API!",
+    timestamp: new Date().toISOString()
+  });
+});
+`
+    });
   }
 
-  // Write files
-  for (const [filename, content] of Object.entries(files)) {
-    if (!fs.existsSync(filename)) {
-      await Bun.write(filename, content);
-      log.success(`Created ${filename}`);
-    } else {
-      log.warn(`Skipped ${filename} (already exists)`);
+  // README.md
+  files.push({
+    path: "README.md",
+    content: `# ${projectName}
+
+Created with [Buncf](https://github.com/fhorray/buncf).
+
+## Quick Start
+
+    \`\`\`bash
+bun dev      # Start development server
+bun build    # Build for production
+bun deploy   # Deploy to Cloudflare
+\`\`\`
+
+## Project Structure
+
+\`\`\`
+├── src/
+│   ├── api/        # API routes
+│   ├── pages/      # Page components
+│   ├── client.tsx  # Client entry
+│   └── index.ts    # Server entry
+├── public/         # Static assets
+└── wrangler.jsonc  # Cloudflare config
+\`\`\`
+`
+  });
+
+  // Write all files
+  for (const file of files) {
+    fs.writeFileSync(path.join(projectDir, file.path), file.content);
+  }
+
+  // Display tree
+  console.log(chalk.dim("  " + (isCurrentDir ? "./" : projectName + "/")));
+  const tree = [
+    "├── src/",
+    "│   ├── api/",
+    "│   │   └── hello.ts",
+    "│   ├── pages/",
+    "│   │   ├── index.tsx",
+    "│   │   └── about.tsx",
+    "│   ├── client.tsx",
+    "│   ├── globals.css",
+    "│   ├── index.html",
+    "│   └── index.ts",
+    "├── public/",
+    "├── package.json",
+    "├── tsconfig.json",
+    "├── wrangler.jsonc",
+    "└── README.md"
+  ];
+  for (const line of tree) {
+    console.log(chalk.dim("  " + line));
+  }
+  console.log("");
+
+  // Step 2: Install dependencies
+  console.log(chalk.cyan("  Installing dependencies..."));
+  console.log("");
+
+  try {
+    const { spawnSync } = require("node:child_process");
+    spawnSync("bun", ["install"], { cwd: projectDir, stdio: "inherit" });
+    console.log("");
+  } catch (e) {
+    log.warn("Could not install dependencies. Run 'bun install' manually.");
+  }
+
+  // Step 3: Initialize git
+  console.log(chalk.cyan("  Initializing git repository..."));
+  try {
+    const { spawnSync } = require("node:child_process");
+    spawnSync("git", ["init"], { cwd: projectDir, stdio: "ignore" });
+    spawnSync("git", ["add", "."], { cwd: projectDir, stdio: "ignore" });
+    console.log(chalk.green("  ✓") + " Git repository initialized");
+  } catch (e) {
+    // Git not available, skip
+  }
+
+  // Final output
+  console.log("");
+  console.log(chalk.green.bold("  ✨ Success!") + " Created " + chalk.cyan(projectName) + " at " + chalk.dim(projectDir));
+  console.log("");
+  console.log("  Next steps:");
+  console.log("");
+  if (!isCurrentDir) {
+    console.log("    " + chalk.cyan("cd") + " " + projectName);
+  }
+  console.log("    " + chalk.cyan("bun dev") + "       Start development server");
+  console.log("    " + chalk.cyan("bun build") + "     Build for production");
+  console.log("    " + chalk.cyan("bun deploy") + "    Deploy to Cloudflare");
+  console.log("");
+  console.log("  " + chalk.dim("Documentation: https://github.com/fhorray/buncf"));
+  console.log("");
+}
+
+
+
+// Helper to generate client routes manifest
+async function generateRoutesManifest() {
+  log.step("🗺️ Generating client routes manifest (.buncf/routes.ts)...");
+  try {
+    const pagesDir = path.resolve(process.cwd(), "src/pages");
+    let routeEntries: string[] = [];
+
+    if (fs.existsSync(pagesDir)) {
+      // const router = new Bun.FileSystemRouter({
+      //   dir: pagesDir,
+      //   style: "nextjs"
+      // }); 
+      // Manual Scan to bypass Bun Router caching issues on Windows
+      const glob = new Bun.Glob("**/*.{tsx,jsx,ts,js}");
+      const files = Array.from(glob.scanSync({ cwd: pagesDir, onlyFiles: true }));
+      console.log(`[debug] pagesDir: ${pagesDir}`);
+      console.log(`[debug] Found ${files.length} page files via glob:`, files);
+
+      routeEntries = files.map((file) => {
+        const absFile = path.resolve(pagesDir, file);
+        // Generate Route Key manually
+        // 1. Remove extension
+        let routePath = file.replace(/\.(tsx|jsx|ts|js)$/, "");
+        // 2. Handle index
+        if (routePath.endsWith("index")) routePath = routePath.slice(0, -5);
+        if (routePath.endsWith("/")) routePath = routePath.slice(0, -1);
+        // 3. Normalize slashes
+        routePath = "/" + routePath.split(path.sep).join("/");
+        // 4. Ensure root is / not //
+        if (routePath === "") routePath = "/";
+        if (routePath.length > 1 && routePath.endsWith("/")) routePath = routePath.slice(0, -1);
+        // Fix double slashes if any (e.g. /users/index -> /users/)
+        routePath = routePath.replace(/\/+/g, "/");
+
+        // Debug
+        // console.log(`  Manual Route: ${routePath} -> ${file}`);
+
+        const relPath = path.relative(".buncf", absFile).split(path.sep).join(path.posix.sep);
+        const importPath = relPath.startsWith(".") ? relPath : `./${relPath}`;
+        return `  "${routePath}": () => import("${importPath}")`;
+      });
     }
-  }
 
-  log.step("Installing dependencies...");
-  const proc = spawn(["bun", "install"], { stdio: ["inherit", "inherit", "inherit"] });
-  await proc.exited;
+    const routesContent = `
+/**
+ * Auto-generated by buncf
+ * Do not edit this file manually
+ */
+import { type ComponentType } from "react";
 
-  log.success("Project initialized! To start:");
-  console.log(`
-  ${colors.cyan}bun run dev${colors.reset}
-`);
+export const routes: Record<string, () => Promise<{ default: ComponentType<any> }>> = {
+${routeEntries.join(",\n")}
 };
 
+ // Type Augmentation for Routes
+declare module "buncf" {
+  interface BuncfTypeRegistry {
+    routes: {
+${routeEntries.map(e => e.split(":")[0]).filter(key => !key?.includes("[")).map(key => `      ${key}: true;`).join("\n")}
+    };
+  }
+}
+`;
+    if (!fs.existsSync(".buncf")) fs.mkdirSync(".buncf");
+    await Bun.write(".buncf/routes.ts", routesContent);
+  } catch (e) {
+    console.error("Failed to generate routes manifest:", e);
+  }
+}
 
 // Reusable Build Function
 const build = async (entrypoint: string) => {
@@ -242,51 +670,13 @@ const build = async (entrypoint: string) => {
     }
   }
 
-  // Generate Client-Side Routes Manifest (.buncf/routes.ts)
-  log.step("🗺️ Generating client routes manifest (.buncf/routes.ts)...");
-  try {
-    const pagesDir = path.resolve(process.cwd(), "src/pages");
-    let routeEntries: string[] = [];
+  await generateRoutesManifest();
 
-    if (fs.existsSync(pagesDir)) {
-      const router = new Bun.FileSystemRouter({
-        dir: pagesDir,
-        style: "nextjs"
-      });
-      routeEntries = Object.entries(router.routes).map(([route, filePath]) => {
-        // Generate relative path from .buncf/routes.ts to src/pages/...
-        // .buncf/routes.ts is 1 level deep from root? No, .buncf folder.
-        // src/pages is 1 level deep.
-        // Rel path from .buncf/ to src/pages/file: ../src/pages/file
-        // Normalize paths
-        const absFile = filePath;
-        // Compute relative path
-        const relPath = path.relative(".buncf", absFile).split(path.sep).join(path.posix.sep);
-        const importPath = relPath.startsWith(".") ? relPath : `./${relPath}`;
-        return `  "${route}": () => import("${importPath}")`;
-      });
-    }
-
-    const routesContent = `
-/**
- * Auto-generated by buncf
- * Do not edit this file manually
- */
-import { type ComponentType } from "react";
-
-export const routes: Record<string, () => Promise<{ default: ComponentType<any> }>> = {
-${routeEntries.join(",\n")}
-};
-`;
-    // Ensure .buncf exists (it does because of copy assets logic, wait no, assets copied to .buncf/cloudflare/assets)
-    // We want .buncf/routes.ts
-    // Check if .buncf exists
-    if (!fs.existsSync(".buncf")) fs.mkdirSync(".buncf");
-
-    await Bun.write(".buncf/routes.ts", routesContent);
-  } catch (e) {
-    console.error("Failed to generate routes manifest:", e);
-  }
+  // Generate type-safe API client
+  log.step("🔧 Generating type-safe API client...");
+  const { generateAllApiTypes } = await import("./codegen");
+  const { routeCount } = await generateAllApiTypes(process.cwd(), { verbose: flags.verbose });
+  log.success(`Generated API types for ${routeCount} endpoints`);
 
   // Client build (for client.tsx/jsx)
   const clientEntry = ["./src/client.tsx", "./src/client.jsx", "./client.tsx", "./client.jsx"].find(path => Bun.file(path).size > 0);
@@ -354,7 +744,11 @@ ${routeEntries.join(",\n")}
       outdir: "./.buncf/cloudflare",
       target: "bun",
       format: "esm",
-      plugins: [bunToCloudflare()],
+      plugins: [bunToCloudflare(entrypoint)],
+      define: {
+        "process.env.NODE_ENV": JSON.stringify("production"),
+        "process.env": "globalThis.process.env",
+      },
       loader: {
         ".html": "file",
       },
@@ -362,7 +756,7 @@ ${routeEntries.join(",\n")}
         entry: "worker.[ext]",
         asset: "assets/[name]-[hash].[ext]",
       },
-      external: clientEntry ? [clientEntry] : [],
+      external: ["node:async_hooks", ...(clientEntry ? [clientEntry] : [])],
     });
 
     if (result.success) {
@@ -384,7 +778,7 @@ const getEntrypoint = () => {
   if (!entrypoint) {
     log.error("No entrypoint found.");
     console.log(`
-${colors.dim}Please create one of the following files:${colors.reset}
+${chalk.dim("Please create one of the following files:")}
   • src/index.ts
   • index.ts
   • src/index.js
@@ -409,14 +803,14 @@ if (flags.help || !command) {
 // Handle commands
 if (command === "build") {
   const entrypoint = getEntrypoint();
-  console.log(`\n${colors.bright}🚀 Building for Production...${colors.reset}\n`);
+  log.title(`🚀 Building for Production...`);
   const success = await build(entrypoint);
   console.log("");
   process.exit(success ? 0 : 1);
 
 } else if (command === "deploy") {
   const entrypoint = getEntrypoint();
-  console.log(`\n${colors.bright}🚀 Deploying to Cloudflare...${colors.reset}\n`);
+  log.title(`🚀 Deploying to Cloudflare...`);
   const success = await build(entrypoint);
   if (!success) process.exit(1);
 
@@ -432,6 +826,7 @@ if (command === "build") {
 } else if (command === "dev") {
   const entrypoint = getEntrypoint();
   console.clear();
+  showBanner();
   log.info(`Starting dev server...`);
 
   // 1. Client Build Watcher
@@ -440,6 +835,13 @@ if (command === "build") {
   if (clientEntry) {
     // @ts-ignore
     const { default: tailwind } = await import("bun-plugin-tailwind");
+
+    // Generate routes once
+    await generateRoutesManifest();
+
+    // Generate type-safe API client
+    const { generateAllApiTypes } = await import("./codegen");
+    await generateAllApiTypes(process.cwd(), { verbose: flags.verbose });
 
     // Initial build + Watch
     const buildClient = async () => {
@@ -451,15 +853,9 @@ if (command === "build") {
           format: "esm",
           plugins: [tailwind],
           naming: "[name].[ext]",
-          // @ts-ignore - Bun types might miss watch option in some versions but it exists
-          // actually Bun.build doesn't support persistent watch callback easily yet in single call API generally, 
-          // but we can use fs.watch or polling for simplicity if native watch isn't exposed perfectly in this context.
-          // However, let's use a simple rebuild on change for now or just run it once if watch is complex.
-          // Better: just run it. And use a file watcher.
         });
-        // log.success is too noisy for every rebuild? Next.js says "transport compiled..."
-        console.log(`${colors.dim}[wait]${colors.reset}  compiling client...`);
-        console.log(`${colors.green}[ready]${colors.reset} client compiled successfully`);
+        console.log(chalk.dim("[wait]") + "  compiling client...");
+        console.log(chalk.green("[ready]") + " client compiled successfully");
       } catch (e) {
         log.error("Client build failed");
       }
@@ -467,18 +863,40 @@ if (command === "build") {
 
     await buildClient();
 
-    // Watch for client changes
-    // Simplified watcher for src folder for now
-    const watcher = fs.watch("./src", { recursive: true }, async (event, filename) => {
-      if (filename && (filename.endsWith(".tsx") || filename.endsWith(".css") || filename.endsWith(".jsx"))) {
-        await buildClient();
+    // Watch for client changes (including pages for route regen)
+    // Watch for client changes (including pages for route regen)
+    let routeGenTimer: ReturnType<typeof setTimeout>;
+    // Use absolute path for watcher reliability
+    const watcher = fs.watch(path.resolve(process.cwd(), "src"), { recursive: true }, async (event: any, filename: any) => {
+      // console.log(`[watch] ${event} ${filename}`);
+      if (filename) {
+        if (filename.includes("pages")) {
+          // console.log("[watch] Pages change detected...");
+          clearTimeout(routeGenTimer);
+          routeGenTimer = setTimeout(async () => {
+            console.log("[watch] Regenerating routes...");
+            await generateRoutesManifest();
+          }, 200);
+        }
+        if (filename.includes("api")) {
+          // Regenerate API types on api folder changes
+          clearTimeout(routeGenTimer);
+          routeGenTimer = setTimeout(async () => {
+            console.log("[watch] Regenerating API types...");
+            const { generateAllApiTypes } = await import("./codegen");
+            await generateAllApiTypes(process.cwd());
+          }, 200);
+        }
+        if (filename.endsWith(".tsx") || filename.endsWith(".css") || filename.endsWith(".jsx")) {
+          await buildClient();
+        }
       }
     });
   }
 
   // 2. Start Server with Native Watch
   // We use standard Bun watch but pipe output to format it
-  console.log(`${colors.dim}[wait]${colors.reset}  starting server...`);
+  console.log(chalk.dim("[wait]") + "  starting server...");
 
   const proc = spawn(["bun", "run", "--watch", entrypoint], {
     stdout: "pipe",
@@ -499,7 +917,7 @@ if (command === "build") {
       for (const line of lines) {
         if (!line.trim()) continue;
         if (line.includes("Saved!")) {
-          console.log(`${colors.green}[ready]${colors.reset} server reloaded`);
+          console.log(chalk.green("[ready]") + " server reloaded");
           continue;
         }
         // Passthrough other logs
@@ -515,10 +933,11 @@ if (command === "build") {
   await proc.exited;
 
 } else if (command === "init") {
-  await initProject();
+  const projectName = args[args.indexOf("init") + 1];
+  await initProject(projectName);
   process.exit(0);
 } else {
   log.error(`Unknown command: ${command}`);
-  console.log(`\nRun ${colors.cyan}buncf --help${colors.reset} for usage information.\n`);
+  console.log(`\nRun ${chalk.cyan("buncf --help")} for usage information.\n`);
   process.exit(1);
 }

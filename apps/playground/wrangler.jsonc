@@ -15,6 +15,13 @@
     "directory": ".buncf/cloudflare/assets",
     "binding": "ASSETS"
   },
+  "kv_namespaces": [
+    {
+      "binding": "MY_KV",
+      "id": "6f75c29e7b084aeba9dbe30075ceb18d",
+      "remote": true
+    }
+  ],
   "vars": {},
   "services": [
     // {
