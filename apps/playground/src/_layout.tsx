@@ -3,6 +3,7 @@
  * Wraps all pages
  */
 import { Link, usePathname } from 'buncf/router';
+import { BuncfDevtools } from '@opaca/devtools';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -64,8 +65,45 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </footer>
+      {/* DEV TOOLS */}
+      {/* DEV TOOLS */}
+      <BuncfDevtools 
+        projectName="Playground" 
+        framework="hono" 
+        agentsMd={`## Instructions
+- Always use 'orange' color for buttons.
+- Prefer functional components.
+
+## Tools
+- generate-component
+- analyze-bundle
+
+## Context
+This is a playground app for testing Buncf features.
+`}
+      />
     </div>
   );
+}
+
+// Inject DevTools Context for verification
+if (typeof window !== 'undefined') {
+  window.__BUNCF_ROUTES__ = [
+    { id: '1', method: 'GET', path: '/', filePath: 'src/pages/index.tsx', description: 'Home page', status: 'ok', tags: ['page', 'public'] },
+    { id: '2', method: 'GET', path: '/about', filePath: 'src/pages/about.tsx', description: 'About page', status: 'ok', tags: ['page', 'public'] },
+    { id: '3', method: 'GET', path: '/users', filePath: 'src/pages/users/index.tsx', description: 'Users list', status: 'ok', tags: ['page'] },
+    { id: '4', method: 'GET', path: '/users/[id]', filePath: 'src/pages/users/[id].tsx', description: 'User details', status: 'ok', tags: ['page', 'dynamic'] },
+    { id: '5', method: 'GET', path: '/api/users', filePath: 'src/api/users.ts', description: 'Users API', status: 'ok', tags: ['api'] },
+  ];
+  
+  window.__BUNCF_FILES__ = [
+    { id: 'f1', path: 'src/pages/index.tsx', name: 'index.tsx', type: 'file', tags: ['page'], routeIds: ['1'] },
+    { id: 'f2', path: 'src/pages/about.tsx', name: 'about.tsx', type: 'file', tags: ['page'], routeIds: ['2'] },
+    { id: 'f3', path: 'src/components/Button.tsx', name: 'Button.tsx', type: 'file', tags: [], routeIds: [] },
+  ];
+  
+  // Dispatch event to notify DevTools
+  window.dispatchEvent(new CustomEvent('Buncf:ContextLoaded'));
 }
 
 function NavLink({

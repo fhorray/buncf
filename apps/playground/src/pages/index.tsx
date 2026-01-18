@@ -1,4 +1,5 @@
 import { useRouter, Link } from 'buncf/router';
+// import { BuncfDevtools } from '@opaca/devtools';
 
 export default function HomePage() {
   const router = useRouter();
@@ -265,7 +266,7 @@ export default function HomePage() {
       </div>
 
       {/* Debug Mini-Dashboard */}
-      <section className="rounded-3xl border border-primary/10 bg-gradient-to-br from-card to-background p-10 overflow-hidden relative group">
+      {/* <section className="rounded-3xl border border-primary/10 bg-gradient-to-br from-card to-background p-10 overflow-hidden relative group">
         <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity" />
         <h3 className="text-sm font-bold uppercase tracking-[0.2em] text-primary mb-8 flex items-center">
           <span className="h-1.5 w-1.5 rounded-full bg-primary mr-2" />
@@ -297,7 +298,7 @@ export default function HomePage() {
             </pre>
           </div>
         </div>
-      </section>
+      {/* <BuncfDevtools projectName="Playground" framework="hono" /> */}
     </div>
   );
 }
