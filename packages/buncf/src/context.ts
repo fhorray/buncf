@@ -1,15 +1,28 @@
-import { AsyncLocalStorage } from "node:async_hooks";
 import { type CloudflareContext } from "./types";
+
+// @ts-ignore
+const isServer = typeof window === "undefined";
+
+let AsyncLocalStorageClass: any;
+if (isServer) {
+  try {
+    AsyncLocalStorageClass = require("node:async_hooks").AsyncLocalStorage;
+  } catch (e) {
+    // Fallback if node:async_hooks is definitely not available
+  }
+}
 
 // Global AsyncLocalStorage instance shared across bundles
 // We use a global symbol to ensure all bundles share the same storage instance
 const storageSymbol = Symbol.for("buncf.context");
-const globalStore = (globalThis as any)[storageSymbol] || new AsyncLocalStorage<CloudflareContext>();
-if (!(globalThis as any)[storageSymbol]) {
+
+const globalStore = (globalThis as any)[storageSymbol] || (AsyncLocalStorageClass ? new AsyncLocalStorageClass() : null);
+
+if (!(globalThis as any)[storageSymbol] && globalStore) {
   (globalThis as any)[storageSymbol] = globalStore;
 }
 
-export const asyncLocalStorage = globalStore as AsyncLocalStorage<CloudflareContext>;
+export const asyncLocalStorage = globalStore;
 
 /**
  * Get the current Cloudflare request context (env, ctx, cf).
@@ -24,7 +37,7 @@ export const asyncLocalStorage = globalStore as AsyncLocalStorage<CloudflareCont
  * ```
  */
 export function getCloudflareContext(): CloudflareContext {
-  const store = asyncLocalStorage.getStore();
+  const store = asyncLocalStorage?.getStore?.();
   if (!store) {
     // Fallback for when context is lost or outside request
     if (process.env.NODE_ENV === "development") {

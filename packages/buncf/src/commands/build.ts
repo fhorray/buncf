@@ -5,40 +5,7 @@ import * as path from "path";
 import { bunToCloudflare } from "../plugin";
 // @ts-ignore
 import { log } from "../utils/log";
-
-// Plugin to force React resolution to the project root (Singleton)
-const deduplicateReactPlugin = {
-  name: "deduplicate-react",
-  setup(build: any) {
-    build.onResolve({ filter: /^react(-dom)?$/ }, (args: any) => {
-      // Force resolve 'react' and 'react-dom' to the consuming project's node_modules
-      try {
-        const projectRoot = process.cwd();
-        const pkgName = args.path;
-        const packageJsonPath = path.join(projectRoot, "node_modules", pkgName, "package.json");
-        if (fs.existsSync(packageJsonPath)) {
-          return {
-            path: require.resolve(pkgName, { paths: [projectRoot] })
-          };
-        }
-      } catch (e) {
-        // Fallback
-      }
-      return undefined;
-    });
-  }
-};
-
-// Plugin to strip CSS imports from JS bundles (prevents MIME type mismatch in browser)
-const ignoreCssPlugin = {
-  name: "ignore-css",
-  setup(build: any) {
-    build.onLoad({ filter: /\.css$/ }, () => ({
-      contents: "",
-      loader: "js"
-    }));
-  }
-};
+import { serverActionsClientPlugin, serverActionsWorkerPlugin, deduplicateReactPlugin, ignoreCssPlugin } from "../plugins/server-actions";
 
 // Start extracted from cli.ts
 
@@ -234,15 +201,7 @@ export const build = async (entrypoint: string) => {
     try { return fs.existsSync(path); } catch (e) { return false; }
   });
 
-  // Helper to load tailwind if available
-  let tailwindPlugin = null;
-  try {
-    // @ts-ignore
-    const { default: tailwind } = await import("bun-plugin-tailwind");
-    tailwindPlugin = tailwind;
-  } catch (e) { /* no plugin */ }
-
-  const plugins = tailwindPlugin ? [tailwindPlugin, deduplicateReactPlugin, ignoreCssPlugin] : [deduplicateReactPlugin, ignoreCssPlugin];
+  const plugins = [deduplicateReactPlugin, ignoreCssPlugin, serverActionsClientPlugin];
 
   // CSS Build (globals.css, index.css)
   const cssEntries = ["./src/globals.css", "./src/index.css", "./globals.css", "./index.css"];
@@ -321,7 +280,7 @@ export const build = async (entrypoint: string) => {
       outdir: "./.buncf/cloudflare",
       target: "bun",
       format: "esm",
-      plugins: [bunToCloudflare(entrypoint), ignoreCssPlugin],
+      plugins: [bunToCloudflare(entrypoint), ignoreCssPlugin, serverActionsWorkerPlugin],
       define: {
         "process.env.NODE_ENV": JSON.stringify("production"),
         "process.env": "globalThis.process.env",

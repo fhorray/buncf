@@ -7,12 +7,18 @@
 
 ## Features
 
-- 🚀 **Zero Config** — Write Bun code, deploy to Cloudflare Workers
+- **Zero Config**: Just run `bun add buncf` and deploy.
+- **Type-Safe RPC**: Call server functions directly from client components with Zod validation.
+- **Advanced Data Mutation**: Declarative forms and fetchers with auto-cancellation and loading states.
+- **Hybrid Routing**: Use file-system routing for pages and Hono for complex APIs.
+- **SSR Ready**: Built-in streaming renderer foundation.
+- **Cloudflare Native**: First-class support for Workers, D1, R2, and KV.
+- **Modern Stack**: React 19, TailwindCSS, and shadcn/ui.
 - 🔄 **Bun.serve Compatibility** — Use familiar `Bun.serve()` API
 - 📁 **File-System Routing** — Next.js-style pages and API routes
 - 🔐 **Cloudflare Bindings** — Full support for KV, D1, R2, and environment variables
 - 🎯 **Type-Safe API Client** — Auto-generated typed client for API routes (RPC-like)
-- ⚛️ **React Router** — Built-in hooks and Link component for SPA navigation
+- ⚛️ **Advanced Hooks** — `useFetcher`, `useAction`, and `Link` with Optimistic UI support
 - 🎨 **Tailwind Support** — Built-in CSS processing with `bun-plugin-tailwind`
 - 📦 **Public Folder** — Next.js-style `/public` directory support
 - ⚡ **Fast Builds** — Powered by Bun's native bundler
@@ -52,8 +58,8 @@ bunx buncf init my-project
 
 ## CLI Commands
 
-| Command        | Description                                      |
-| -------------- | ------------------------------------------------ |
+| Command        | Description                                       |
+| -------------- | ------------------------------------------------- |
 | `buncf init`   | Scaffold a new project with recommended structure |
 | `buncf dev`    | Start development server with hot reload          |
 | `buncf build`  | Build for production                              |
@@ -107,7 +113,7 @@ Export React components from files in `src/pages/`:
 
 ```tsx
 // src/pages/blog/[slug].tsx
-import { useParams } from "buncf/router";
+import { useParams } from 'buncf/router';
 
 export default function BlogPost() {
   const { slug } = useParams();
@@ -122,11 +128,11 @@ Create `src/api/[...route].ts` to handle all matching API requests with Hono:
 
 ```typescript
 // src/api/[...route].ts
-import { Hono } from "hono";
-const app = new Hono().basePath("/api");
+import { Hono } from 'hono';
+const app = new Hono().basePath('/api');
 
-app.get("/hello", (c) => c.json({ message: "Hello from Hono!" }));
-app.get("/users", (c) => c.json([{ id: 1, name: "Alice" }]));
+app.get('/hello', (c) => c.json({ message: 'Hello from Hono!' }));
+app.get('/users', (c) => c.json([{ id: 1, name: 'Alice' }]));
 
 // Export Hono's fetch handler directly
 export default app.fetch;
@@ -181,11 +187,15 @@ Layouts nest automatically: `Global > Dashboard > Page`.
 ```tsx
 // src/pages/dashboard/_layout.tsx
 export const meta = () => [
-  { title: "Dashboard - MyApp" },
-  { name: "robots", content: "noindex" }
+  { title: 'Dashboard - MyApp' },
+  { name: 'robots', content: 'noindex' },
 ];
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+export default function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <div className="dashboard-grid">
       <Sidebar />
@@ -209,28 +219,28 @@ Buncf supports Next.js-style middleware. Create `src/middleware.ts` to intercept
 
 ```typescript
 // src/middleware.ts
-import type { MiddlewareConfig } from "buncf";
+import type { MiddlewareConfig } from 'buncf';
 
 export default [
   {
-    name: "auth-guard",
-    matcher: "/api/protected/*", // Supports wildcards
+    name: 'auth-guard',
+    matcher: '/api/protected/*', // Supports wildcards
     handler: async (req, next) => {
-      const token = req.headers.get("Authorization");
+      const token = req.headers.get('Authorization');
       if (!token) {
-        return new Response("Unauthorized", { status: 401 });
+        return new Response('Unauthorized', { status: 401 });
       }
       return next(); // Proceed to next middleware or route handler
-    }
+    },
   },
   {
-    name: "logger",
-    matcher: "/api/*",
+    name: 'logger',
+    matcher: '/api/*',
     handler: async (req, next) => {
       console.log(`[${req.method}] ${req.url}`);
       return next();
-    }
-  }
+    },
+  },
 ] satisfies MiddlewareConfig[];
 ```
 
@@ -244,7 +254,7 @@ Buncf auto-generates a typed API client from your endpoints.
 
 ```typescript
 // src/api/users/[id].ts
-import { defineHandler } from "buncf";
+import { defineHandler } from 'buncf';
 
 interface User {
   id: string;
@@ -262,8 +272,8 @@ export const GET = defineHandler<{ id: string }, User>((req) => {
 
 ```tsx
 // src/pages/users/[id].tsx
-import { api } from "../.buncf/api-client";
-import { useParams } from "buncf/router";
+import { api } from '../.buncf/api-client';
+import { useParams } from 'buncf/router';
 
 export default function UserPage() {
   const { id } = useParams();
@@ -271,7 +281,7 @@ export default function UserPage() {
 
   useEffect(() => {
     // Type-safe! Autocomplete shows available routes
-    api.get("/api/users/:id", { params: { id } }).then(setUser);
+    api.get('/api/users/:id', { params: { id } }).then(setUser);
   }, [id]);
 
   return <div>{user?.name}</div>;
@@ -280,10 +290,10 @@ export default function UserPage() {
 
 ### Generated Files
 
-| File                   | Description                          |
-| ---------------------- | ------------------------------------ |
-| `.buncf/api-types.d.ts` | TypeScript interface for all routes  |
-| `.buncf/api-client.ts`  | Hono-style typed fetch wrapper       |
+| File                    | Description                         |
+| ----------------------- | ----------------------------------- |
+| `.buncf/api-types.d.ts` | TypeScript interface for all routes |
+| `.buncf/api-client.ts`  | Hono-style typed fetch wrapper      |
 
 ### Data Loaders
 
@@ -293,16 +303,16 @@ The `_loading.tsx` component will be shown while the loader is running.
 
 ```tsx
 // src/pages/dashboard.tsx
-import { api } from "../.buncf/api-client";
+import { api } from '../.buncf/api-client';
 
 export const loader = async ({ params, query }) => {
-    // This runs on the client
-    const stats = await api.get("/api/stats");
-    return stats;
+  // This runs on the client
+  const stats = await api.get('/api/stats');
+  return stats;
 };
 
 export default function Dashboard({ data }: { data: any }) {
-    return <div>Stats: {data.total_users}</div>;
+  return <div>Stats: {data.total_users}</div>;
 }
 ```
 
@@ -313,20 +323,20 @@ export default function Dashboard({ data }: { data: any }) {
 Import hooks and components from `buncf/router`:
 
 ```tsx
-import { 
-  useRouter, 
-  useParams, 
-  useSearchParams, 
+import {
+  useRouter,
+  useParams,
+  useSearchParams,
   usePathname,
   Link,
-  BuncfRouter 
-} from "buncf/router";
+  BuncfRouter,
+} from 'buncf/router';
 ```
 
 ### Available Hooks
 
-| Hook                | Description                                |
-| ------------------- | ------------------------------------------ |
+| Hook                | Description                                      |
+| ------------------- | ------------------------------------------------ |
 | `useRouter()`       | Navigation: `push`, `replace`, `back`, `forward` |
 | `useParams()`       | Dynamic route params (e.g., `{ id: "123" }`)     |
 | `useSearchParams()` | Query string params (`?foo=bar`)                 |
@@ -345,12 +355,12 @@ Wrap your app with `BuncfRouter` in `client.tsx`:
 
 ```tsx
 // src/client.tsx
-import { BuncfRouter } from "buncf/router";
-import { routes } from "./.buncf/routes";
-import Layout from "./_layout";
+import { BuncfRouter } from 'buncf/router';
+import { routes } from './.buncf/routes';
+import Layout from './_layout';
 
-createRoot(document.getElementById("root")!).render(
-  <BuncfRouter layout={Layout} routes={routes} />
+createRoot(document.getElementById('root')!).render(
+  <BuncfRouter layout={Layout} routes={routes} />,
 );
 ```
 
@@ -372,9 +382,7 @@ Access KV, D1, R2, and environment variables with full type support.
     "directory": ".buncf/cloudflare/assets",
     "binding": "ASSETS"
   },
-  "kv_namespaces": [
-    { "binding": "MY_KV", "id": "your-kv-id" }
-  ],
+  "kv_namespaces": [{ "binding": "MY_KV", "id": "your-kv-id" }],
   "vars": {
     "API_KEY": "secret"
   }
@@ -385,18 +393,18 @@ Access KV, D1, R2, and environment variables with full type support.
 
 ```typescript
 // src/api/data.ts
-import { getCloudflareContext } from "buncf";
+import { getCloudflareContext } from 'buncf';
 
 export async function GET() {
   const { env, ctx, cf } = getCloudflareContext();
-  
+
   // KV access
-  const value = await env.MY_KV.get("key");
-  
+  const value = await env.MY_KV.get('key');
+
   // Environment variables
   const apiKey = env.API_KEY;
   // Also available as: process.env.API_KEY
-  
+
   return Response.json({ value, apiKey });
 }
 ```
@@ -437,13 +445,13 @@ Reference with absolute paths:
 Create `src/globals.css`:
 
 ```css
-@import "tailwindcss";
+@import 'tailwindcss';
 ```
 
 Import in `src/client.tsx`:
 
 ```tsx
-import "./globals.css";
+import './globals.css';
 ```
 
 ---

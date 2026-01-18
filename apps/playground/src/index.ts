@@ -5,7 +5,7 @@ import { createApp } from 'buncf';
 const app = createApp();
 
 export default {
-  port: 3000,
+  port: 3001,
   routes: app.routes,
   fetch: app.fetch,
   development: app.development

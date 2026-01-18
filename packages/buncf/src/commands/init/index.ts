@@ -63,7 +63,6 @@ export async function init(projectName: string) {
 
   if (useTailwind) {
     devDeps["tailwindcss"] = "latest";
-    devDeps["bun-plugin-tailwind"] = "latest";
   }
 
   if (useShadcn) {

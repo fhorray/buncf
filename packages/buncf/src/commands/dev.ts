@@ -6,32 +6,7 @@ import { spawn } from "child_process";
 import { bunToCloudflare } from "../plugin";
 // @ts-ignore
 import { log, colors } from "../utils/log";
-
-// Deduplicate React Plugin (Repeated for dev command simplicity)
-const deduplicateReactPlugin = {
-  name: "deduplicate-react",
-  setup(build: any) {
-    build.onResolve({ filter: /^react(-dom)?$/ }, (args: any) => {
-      try {
-        const projectRoot = process.cwd();
-        const pkgName = args.path;
-        const packageJsonPath = path.join(projectRoot, "node_modules", pkgName, "package.json");
-        if (fs.existsSync(packageJsonPath)) {
-          return { path: require.resolve(pkgName, { paths: [projectRoot] }) };
-        }
-      } catch (e) { }
-      return undefined;
-    });
-  }
-};
-
-// Ignore CSS Plugin (Repeated for dev command simplicity)
-const ignoreCssPlugin = {
-  name: "ignore-css",
-  setup(build: any) {
-    build.onLoad({ filter: /\.css$/ }, () => ({ contents: "", loader: "js" }));
-  }
-};
+import { serverActionsClientPlugin, serverActionsWorkerPlugin, deduplicateReactPlugin, ignoreCssPlugin } from "../plugins/server-actions";
 
 function showBanner() {
   console.log(colors.cyan(`
@@ -157,7 +132,7 @@ export async function dev(entrypoint: string, flags: { verbose?: boolean, remote
     // Initial build + Watch
     const buildClient = async () => {
       try {
-        const plugins = tailwind ? [tailwind, deduplicateReactPlugin, ignoreCssPlugin] : [deduplicateReactPlugin, ignoreCssPlugin];
+        const plugins = tailwind ? [tailwind, deduplicateReactPlugin, ignoreCssPlugin, serverActionsClientPlugin] : [deduplicateReactPlugin, ignoreCssPlugin, serverActionsClientPlugin];
 
         // Filter public env vars
         const publicEnv = Object.keys(process.env).reduce((acc, key) => {
@@ -332,7 +307,7 @@ console.log(
           "process.env.NODE_ENV": JSON.stringify("development"),
         },
         // @ts-ignore
-        plugins: [bunToCloudflare(entrypoint)],
+        plugins: [bunToCloudflare(entrypoint), serverActionsWorkerPlugin],
         sourcemap: "inline",
         // @ts-ignore
         external: ["buncf", "buncf/dev"] // Don't bundle the pkg itself if imported

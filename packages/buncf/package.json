@@ -46,7 +46,7 @@
     "bun": ">=1.0.0"
   },
   "dependencies": {
-
+    "zod": "^4.3.5"
   },
   "devDependencies": {
     "@types/bun": "latest",
@@ -55,7 +55,6 @@
   },
   "peerDependencies": {
     "typescript": "^5",
-    "bun-plugin-tailwind": "^0.1.0",
     "react": ">=18.0.0",
     "react-dom": ">=18.0.0"
   },

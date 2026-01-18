@@ -36,6 +36,13 @@ export const docsConfig = {
       ],
     },
     {
+      title: "Integrations",
+      items: [
+        { title: "RPC & Actions", href: "/docs/rpc" },
+        { title: "Examples & Guides", href: "/docs/examples" },
+      ],
+    },
+    {
       title: "Cloudflare",
       items: [
         { title: "Bindings (KV, D1)", href: "/docs/bindings" },

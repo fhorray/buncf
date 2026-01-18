@@ -9,7 +9,15 @@ import Layout from './_layout';
 import { routes, layouts } from '../.buncf/routes';
 
 const elem = document.getElementById('root');
-if (!elem) throw new Error('Root element not found');
+if (!elem) {
+  console.error(
+    'Available elements:',
+    document.body ? document.body.innerHTML : 'no body',
+  );
+  throw new Error(
+    'Root element not found. Make sure <div id="root"></div> exists in your index.html',
+  );
+}
 
 const app = (
   <StrictMode>

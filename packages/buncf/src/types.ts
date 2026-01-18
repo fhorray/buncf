@@ -18,7 +18,7 @@ export interface BunServeOptions {
   routes?: Record<string, BunRouteHandler>;
   fetch?: (req: Request, server: any) => Response | Promise<Response>;
   error?: (error: Error) => Response | Promise<Response>;
-  assetPrefix?: string; // Custom config for Point 4
+  assetPrefix?: string; // Custom config
   development?: boolean;
 }
 
@@ -107,7 +107,34 @@ export interface CloudflareContext {
   cf?: IncomingRequestCfProperties;
 }
 
-// --- GLOBAL MODULE AUGMENTATION ---
+
+// --- LOADER & META TYPES ---
+
+export interface LoaderArgs {
+  params: Record<string, string>;
+  query: Record<string, string>;
+  request?: Request; // Request object available in SSR/Action loaders
+}
+
+export type LoaderFunction<T = any> = (args: LoaderArgs) => Promise<T> | T;
+
+export interface MetaArgs<data = any> {
+  data: data;
+  params: Record<string, string>;
+  query: Record<string, string>;
+}
+
+export interface MetaTag {
+  [key: string]: string | undefined;
+  title?: string;
+  name?: string;
+  property?: string;
+  content?: string;
+  charset?: string;
+}
+
+export type MetaFunction<data = any> = (args: MetaArgs<data>) => MetaTag[] | MetaTag;
+
 
 
 

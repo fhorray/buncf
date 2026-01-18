@@ -123,6 +123,25 @@ yarn exec turbo link
 pnpm exec turbo link
 ```
 
+## ✨ Magic Server Actions
+
+Buncf includes a Next.js-style Server Actions system. Define logic in files ending with `.action.ts` and call them directly from your client components with full type safety and automatic RPC.
+
+```typescript
+// 1. Define: src/todos.action.ts
+export const createTodo = defineAction(
+  z.object({ text: z.string() }),
+  async ({ text }) => {
+    return { id: '123', status: 'saved' };
+  },
+);
+
+// 2. Use: src/pages/index.tsx
+import { createTodo } from '../todos.action';
+// ... inside component
+const result = await createTodo({ text: 'Magic!' });
+```
+
 ## Useful Links
 
 Learn more about the power of Turborepo:

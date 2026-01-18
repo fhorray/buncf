@@ -7,9 +7,13 @@
 import { createApiRouter, type ApiHandler, type HttpMethod } from "./api";
 import { createPagesRouter, type PageMatch } from "./pages";
 import * as fs from "fs";
+import * as path from "path";
 import { initBuncfDev, getDevContext } from "../dev";
 import { runWithCloudflareContext, getCloudflareContext } from "../context";
 import type { CloudflareEnv, ExecutionContext } from "../types";
+import { handleAction } from "../action";
+import { serverActions as prodActions } from "../actions-registry";
+import { serverActionsClientPlugin, deduplicateReactPlugin, ignoreCssPlugin } from "../plugins/server-actions";
 
 // Server-side exports
 export { createApiRouter } from "./api";
@@ -144,6 +148,44 @@ export function createApp(options: CreateAppOptions = {}) {
   }
 
   async function handleRequest(req: Request, url: URL): Promise<Response> {
+    // 0. Try Server Actions
+    if (url.pathname.startsWith("/_action/")) {
+      const encodedId = url.pathname.replace("/_action/", "");
+      const actionId = decodeURIComponent(encodedId);
+      console.log(`[buncf] actionId: ${actionId}`);
+      console.log(`[buncf] Resolving Action: ${actionId}`);
+
+      let action: any = prodActions[actionId];
+
+      // In Dev mode, try to resolve action dynamically if not in prodActions
+      if (process.env.NODE_ENV !== "production" && !action) {
+        try {
+          const [filePath, exportName] = actionId.split("::");
+          console.log(`[buncf] Dev Mode - File: ${filePath}, Export: ${exportName}`);
+
+          if (filePath && exportName) {
+            const absPath = path.resolve(process.cwd(), filePath);
+            if (fs.existsSync(absPath)) {
+              // @ts-ignore
+              const mod = await import(absPath + "?update=" + Date.now());
+              action = mod[exportName];
+              console.log(`[buncf] Found Action: ${!!action} (isAction: ${action?._isAction})`);
+            } else {
+              console.warn(`[buncf] Action file not found: ${absPath}`);
+            }
+          }
+        } catch (e) {
+          console.error(`[buncf] Failed to resolve action ${actionId}:`, e);
+        }
+      }
+
+      if (action && (action.handler || action._isAction)) {
+        return handleAction(req, action);
+      }
+
+      console.error(`[buncf] Action Not Found or Invalid: ${actionId}`);
+      return new Response(`Action Not Found: ${actionId}`, { status: 404 });
+    }
 
     // 1. Try API routes first
     if (apiRouter && url.pathname.startsWith("/api")) {
@@ -209,23 +251,69 @@ export function createApp(options: CreateAppOptions = {}) {
       }
 
       // Check common source directories
-      const possiblePaths = [
+      let possiblePaths = [
         `./src${url.pathname}`,
         `.${url.pathname}`,
         `./src/public${url.pathname}`,
         `./public${url.pathname}`,
       ];
 
+      // Robustness: If requesting .js, also try .tsx/.ts/.jsx in source
+      if (url.pathname.endsWith(".js")) {
+        const base = url.pathname.slice(0, -3);
+        possiblePaths = [
+          ...possiblePaths,
+          `./src${base}.tsx`,
+          `./src${base}.ts`,
+          `./src${base}.jsx`,
+          `.${base}.tsx`,
+          `.${base}.ts`,
+          `.${base}.jsx`,
+        ];
+      }
+
       for (const filePath of possiblePaths) {
         if (fs.existsSync(filePath)) {
-          // 3a. Handle TSX/TS/JSX (Transpile only, NO Tailwind plugin here to avoid Node.js builtins error)
+          // 3a. Handle Server Actions (Return RPC stub instead of code)
+          if (filePath.match(/\.action\.(tsx|ts|jsx)$/)) {
+            const code = fs.readFileSync(filePath, "utf8");
+            const relativePath = path.relative(process.cwd(), filePath);
+            const exportMatches = code.matchAll(/export (?:async )?function ([a-zA-Z0-9_$]+)/g);
+            const constExportMatches = code.matchAll(/export const ([a-zA-Z0-9_$]+) =/g);
+
+            let clientCode = `/** Auto-generated Server Action Stubs */\n`;
+            const addStub = (name: string) => {
+              const actionId = encodeURIComponent(`${relativePath}#${name}`);
+              clientCode += `
+export const ${name} = async (input) => {
+  const res = await fetch("/_action/${actionId}", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: "Action failed" }));
+    throw new Error(error.error || "Action failed");
+  }
+  return res.json();
+};\n`;
+            };
+
+            for (const match of exportMatches) if (match[1]) addStub(match[1]);
+            for (const match of constExportMatches) if (match[1]) addStub(match[1]);
+
+            return new Response(clientCode, {
+              headers: { "Content-Type": "application/javascript" },
+            });
+          }
+
+          // 3b. Handle TSX/TS/JSX (Transpile only, NO Tailwind plugin here to avoid Node.js builtins error)
           if (filePath.match(/\.(tsx|ts|jsx)$/)) {
             try {
               const result = await Bun.build({
                 entrypoints: [filePath],
                 format: "esm",
-                target: "browser",
-                external: ["*.css"], // Keep CSS imports as requests so we can process them separately
+                plugins: [deduplicateReactPlugin, ignoreCssPlugin, serverActionsClientPlugin],
               });
 
               if (result.success && result.outputs[0]) {
@@ -233,9 +321,17 @@ export function createApp(options: CreateAppOptions = {}) {
                 return new Response(code, {
                   headers: { "Content-Type": "application/javascript" },
                 });
+              } else {
+                const logs = result.logs.map(l => l.message).join("\n");
+                console.error(`[buncf] Transpilation failed for ${filePath}:\n`, logs);
+                return new Response(`/* Transpilation Failed */\nconsole.error("Buncf: Failed to build ${filePath}");\n/*\n${logs}\n*/`, {
+                  status: 500,
+                  headers: { "Content-Type": "application/javascript" },
+                });
               }
-            } catch (e) {
+            } catch (e: any) {
               console.error(`[buncf] Failed to transpile ${filePath}:`, e);
+              return new Response(`console.error("Buncf: Internal build error for ${filePath}");`, { status: 500 });
             }
           }
 
