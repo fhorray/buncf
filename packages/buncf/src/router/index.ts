@@ -313,6 +313,7 @@ export const ${name} = async (input) => {
               const result = await Bun.build({
                 entrypoints: [filePath],
                 format: "esm",
+                minify: true,
                 plugins: [deduplicateReactPlugin, ignoreCssPlugin, serverActionsClientPlugin],
               });
 
@@ -351,6 +352,7 @@ export const ${name} = async (input) => {
                 // The output is just CSS text, so it's safe for browser.
                 target: "node",
                 plugins,
+                minify: true,
               });
 
               if (result.success && result.outputs[0]) {
@@ -367,9 +369,16 @@ export const ${name} = async (input) => {
           // 3c. Serve other files directly or fallback if build failed
           const file = Bun.file(filePath);
           const contentType = getContentType(filePath);
-          return new Response(file, {
-            headers: { "Content-Type": contentType },
-          });
+
+          // Add aggressive caching for assets (especially built ones)
+          const headers: Record<string, string> = { "Content-Type": contentType };
+          if (filePath.includes(".buncf") || filePath.includes("public")) {
+            headers["Cache-Control"] = "public, max-age=31536000, immutable";
+          } else {
+            headers["Cache-Control"] = "public, max-age=3600"; // 1 hour for others
+          }
+
+          return new Response(file, { headers });
         }
       }
     }

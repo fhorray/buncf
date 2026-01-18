@@ -214,7 +214,8 @@ export const build = async (entrypoint: string) => {
           outdir: "./.buncf/cloudflare/assets",
           target: "browser", // allows css output
           plugins: plugins,
-          naming: "[name].[ext]"
+          naming: "[name].[ext]",
+          minify: true,
         });
         if (cssResult.success) {
           log.success(`CSS built: ${cssFile}`);
@@ -251,6 +252,9 @@ export const build = async (entrypoint: string) => {
         outdir: "./.buncf/cloudflare/assets",
         target: "browser",
         format: "esm",
+        minify: true,
+        splitting: true,
+        drop: ["console", "debugger"],
         // Inject Process & Env for Client compatibility
         define: {
           "process.env.NODE_ENV": JSON.stringify("production"),
@@ -258,7 +262,11 @@ export const build = async (entrypoint: string) => {
           "process.browser": "true"
         },
         plugins: plugins,
-        naming: "[name].[ext]",
+        naming: {
+          entry: "[name].[ext]",
+          chunk: "[name]-[hash].[ext]",
+          asset: "[name]-[hash].[ext]",
+        },
       });
       if (clientResult.success) {
         log.success("Client build finished");
@@ -280,6 +288,9 @@ export const build = async (entrypoint: string) => {
       outdir: "./.buncf/cloudflare",
       target: "bun",
       format: "esm",
+      minify: true,
+      splitting: false, // Keep worker as single file for Cloudflare compatibility
+      drop: ["console", "debugger"], // Prune logs from production worker
       plugins: [bunToCloudflare(entrypoint), ignoreCssPlugin, serverActionsWorkerPlugin],
       define: {
         "process.env.NODE_ENV": JSON.stringify("production"),
@@ -297,7 +308,7 @@ export const build = async (entrypoint: string) => {
     });
 
     if (result.success) {
-      log.success("Worker build finished: .buncf/cloudflare/worker.js");
+      log.success("Worker build finished: .buncf/worker.js");
       const workerFile = "./.buncf/cloudflare/worker.js";
       if (fs.existsSync(workerFile)) buildStats.workerSize = fs.statSync(workerFile).size;
 

@@ -150,6 +150,7 @@ export async function dev(entrypoint: string, flags: { verbose?: boolean, remote
           outdir: "./.buncf/cloudflare/assets",
           target: "browser",
           format: "esm",
+          minify: true,
           define: {
             "process.env.NODE_ENV": JSON.stringify("development"),
             "process.env": JSON.stringify(publicEnv),
@@ -168,7 +169,8 @@ export async function dev(entrypoint: string, flags: { verbose?: boolean, remote
                 outdir: "./.buncf/cloudflare/assets",
                 target: "browser",
                 plugins,
-                naming: "[name].[ext]"
+                naming: "[name].[ext]",
+                minify: true,
               });
             } catch (e) {
               console.error("CSS build error:", e);
@@ -299,10 +301,12 @@ console.log(
     try {
       await Bun.build({
         entrypoints: [entrypoint],
+        minify: true,
         outdir: ".buncf",
         naming: "dev.js", // force specific name
         target: "bun",
         format: "esm",
+        splitting: true,
         define: {
           "process.env.NODE_ENV": JSON.stringify("development"),
         },
