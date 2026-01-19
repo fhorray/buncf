@@ -96,11 +96,6 @@ export function createApp(options: CreateAppOptions = {}) {
     console.log(`\n  \x1b[36m🚀 Buncf Development Server\x1b[0m`);
     console.log(`  \x1b[32m✔\x1b[0m Local:    \x1b[34mhttp://localhost:${port}\x1b[0m`);
     console.log(`  \x1b[32m✔\x1b[0m Ready in: \x1b[33msrc/api/\x1b[0m and \x1b[33msrc/pages/\x1b[0m\n`);
-
-    // Initialize Miniflare for bindings (Lazy)
-    initBuncfDev().catch(err => {
-      console.error("Failed to initialize dev bindings:", err);
-    });
   }
 
   /**

@@ -58,6 +58,7 @@ export async function init(projectName: string) {
     "typescript": "^5.0.0",
     "wrangler": "latest",
     "bun": "latest",
+    "miniflare": "latest",
     "tw-animate-css": "latest"
   };
 

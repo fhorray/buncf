@@ -3,6 +3,7 @@
 export * from './types';
 export { getCloudflareContext, runWithCloudflareContext } from './context';
 export { initBuncfDev } from './dev';
+export { createWorkerHandler } from './worker-factory';
 
 // Re-export server-side router (createApp)
 // For hooks/Link, use: import { useRouter } from "buncf/router"

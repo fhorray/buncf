@@ -6,6 +6,7 @@ import { bunToCloudflare } from "../plugin";
 // @ts-ignore
 import { log } from "../utils/log";
 import { serverActionsClientPlugin, serverActionsWorkerPlugin, deduplicateReactPlugin, ignoreCssPlugin } from "../plugins/server-actions";
+import { generateCloudflareTypes } from "../utils/typegen";
 
 // Start extracted from cli.ts
 
@@ -125,6 +126,10 @@ function styleTag(route: string) {
 // Reusable Build Function
 export const build = async (entrypoint: string) => {
   const startTime = performance.now();
+
+  // 0. Auto Generate Cloudflare Types
+  await generateCloudflareTypes();
+
   const buildStats = {
     routes: { static: 0, dynamic: 0, total: 0 },
     assets: 0,

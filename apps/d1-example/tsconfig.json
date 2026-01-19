@@ -27,6 +27,9 @@
       "buncf/router": [
         "./node_modules/buncf/src/router/react.ts"
       ],
+      "buncf/bindings": [
+        "./node_modules/buncf/src/bindings.ts"
+      ],
       "$api": [
         "./.buncf/api-client.ts"
       ],

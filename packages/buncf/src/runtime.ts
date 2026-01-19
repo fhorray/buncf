@@ -239,76 +239,21 @@ try {
 } catch (e) { }
 
 
-// --- WORKER EXPORT (ENTRY POINT) ---
-
-export default {
+// --- RUNTIME HANDLER (Internal use) ---
+export const buncfRuntimeHandler = {
   async fetch(request: Request, env: CloudflareEnv, ctx: any) {
-    // Sync Env
-    try {
-      // Polyfill process using casting for the extended type
-      if (typeof process === "undefined") (globalThis as any).process = { env: {} };
-      if (!process.env) process.env = {};
-
-      const stringEnv: Record<string, string> = {};
-      for (const key in env) {
-        if (typeof env[key] === 'string') {
-          stringEnv[key] = env[key] as string;
-          process.env[key] = env[key] as string;
-        }
-      }
-
-      // Sync to Bun shim
-      __BunShim__.env = { ...stringEnv };
-      if (env.ASSETS) __BunShim__.ASSETS = env.ASSETS;
-
-      if (typeof globalThis.Bun !== "undefined") {
-        (globalThis.Bun as any).env = { ...stringEnv };
-        if (env.ASSETS) (globalThis.Bun as any).ASSETS = env.ASSETS;
-      }
-
-    } catch (e) {
-      console.error("[runtime] Env sync failed:", e);
-    }
-
     if (!__handler__ || !__handler__.fetch) {
       return new Response("Error: Bun.serve not initialized or missing fetch handler", { status: 500 });
     }
 
-    try {
-      // Execute User Logic
-      const response = await runWithCloudflareContext(
-        { env, ctx, cf: (request as any).cf },
-        async () => {
-          const res = await __handler__!.fetch!(request, { ...(__handler__ || {}) });
+    // Direct execution (Fallback if factory is not used)
+    const res = await __handler__!.fetch!(request, { ...(__handler__ || {}) });
 
-          // --- ASSET FALLBACK FOR USER HANDLERS ---
-          // If user returns 404 on GET, try to find matching asset in Cloudflare
-          if (res.status === 404 && request.method === "GET") {
-            const assetResponse = await globalServeAsset(request, __handler__!.assetPrefix);
-            if (assetResponse) {
-              return assetResponse;
-            }
-          }
-          return res;
-        }
-      );
-
-      return response;
-
-    } catch (err: any) {
-      console.error("[Buncf] Worker Error:", err);
-
-      if (__handler__ && typeof __handler__.error === "function") {
-        try {
-          const maybePromise = __handler__.error(err);
-          const customResponse = maybePromise instanceof Promise ? await maybePromise : maybePromise;
-          return customResponse;
-        } catch (secondaryError) {
-          console.error("[Buncf] Custom error handler failed:", secondaryError);
-        }
-      }
-
-      return new Response(err.message || "Internal Server Error", { status: 500 });
+    // Asset Fallback
+    if (res.status === 404 && request.method === "GET") {
+      const assetResponse = await globalServeAsset(request, __handler__!.assetPrefix);
+      if (assetResponse) return assetResponse;
     }
+    return res;
   },
 };

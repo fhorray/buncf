@@ -62,7 +62,7 @@ export const bunToCloudflare = (entrypointPath?: string): BunPlugin => ({
       const loader = args.path.endsWith("sx") ? "tsx" : "ts";
 
       // Prepare Injections
-      const runtimeNoExport = runtimeCode.replace("export default", "const __worker_export__ =");
+      const runtimeNoExport = runtimeCode.replace("export const buncfRuntimeHandler =", "const __worker_export__ =");
 
       // Inject Constants (Static Routes)
       let injectedRoutesCode = "";
@@ -200,82 +200,16 @@ ${middlewareImportCode}
 // --- USER CODE ---
 ${processedCode}
 
-// --- MIDDLEWARE PRE-COMPILATION ---
-const __MIDDLEWARE_CACHE__ = (typeof __middleware_stack__ !== "undefined" && Array.isArray(__middleware_stack__))
-    ? __middleware_stack__.map(m => ({
-        handler: m.handler,
-        patterns: m.matcher 
-        ? (Array.isArray(m.matcher) ? m.matcher : [m.matcher]).map(p => {
-             // Assume string patterns are for pathname matching
-             // We use { pathname: p } to allow origin-agnostic matching
-             try { return new URLPattern({ pathname: p }); } catch(e) { return null; }
-          }).filter(Boolean)
-        : null
-    }))
-    : [];
-
 // --- WORKER EXPORT ---
-export default {
-    async fetch(request, env, ctx) {
-        // Sync Env
-        if (typeof process === "undefined") globalThis.process = { env: {} };
-        if (!process.env) process.env = {};
-        
-        const stringEnv = {};
-        for (const key in env) {
-             if (typeof env[key] === 'string') {
-                 stringEnv[key] = env[key];
-                 process.env[key] = env[key];
-             }
-        }
-        
-        if (typeof __BunShim__ !== "undefined") {
-            __BunShim__.env = stringEnv;
-            if (env.ASSETS) __BunShim__.ASSETS = env.ASSETS;
-        }
+import { createWorkerHandler } from "buncf";
 
-        // Priority: User Custom Handler > Buncf Runtime Handler
-        const handler = typeof __user_export__ !== 'undefined' ? __user_export__ : __worker_export__;
-
-         // Final Handler Wrapper
-        const finalHandler = async () => {
-             if (handler && typeof handler.fetch === 'function') {
-                return handler.fetch(request, env, ctx);
-            }
-            return new Response("Entrypoint error: No fetch handler found.", { status: 500 });
-        };
-
-        // --- MIDDLEWARE RUNNER ---
-        // Access the pre-compiled stack injected below
-        if (typeof __MIDDLEWARE_CACHE__ !== "undefined") {
-            let index = -1;
-            const dispatch = async (i) => {
-                if (i <= index) throw new Error("next() called multiple times");
-                index = i;
-                
-                const item = __MIDDLEWARE_CACHE__[i];
-                if (!item) return finalHandler();
-                
-                let matched = true;
-                if (item.patterns) {
-                   const urlObj = new URL(request.url); 
-                   // Test against pathname specifically for performance and origin-agnosticism
-                   matched = item.patterns.some(p => p.test({ pathname: urlObj.pathname }));
-                }
-                
-                if (!matched) return dispatch(i + 1);
-                
-                return item.handler(request, () => dispatch(i + 1));
-            };
-            
-            // Wrap Middleware execution in Context
-            return runWithCloudflareContext({ env, ctx, cf: (request.cf || {}) }, () => dispatch(0));
-        }
-
-        // Wrap Direct Handler execution in Context
-        return runWithCloudflareContext({ env, ctx, cf: (request.cf || {}) }, () => finalHandler());
+export default createWorkerHandler(
+    typeof __user_export__ !== 'undefined' ? __user_export__ : __worker_export__, 
+    {
+        middleware: typeof __middleware_stack__ !== "undefined" ? __middleware_stack__ : [],
+        bunShim: typeof __BunShim__ !== "undefined" ? __BunShim__ : undefined
     }
-};
+);
 `;
       return {
         contents: combinedCode,

@@ -1,5 +1,5 @@
 import { drizzle } from "drizzle-orm/d1";
-import { getCloudflareContext } from "buncf";
+import { d1, env } from "buncf/bindings";
 
-const ctx = getCloudflareContext();
-export const db = drizzle(ctx.env.DB);
+
+export const db = drizzle(d1.DB);

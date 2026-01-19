@@ -31,6 +31,10 @@
     "./router": {
       "types": "./src/router/react.ts",
       "import": "./src/router/react.ts"
+    },
+    "./bindings": {
+      "types": "./src/bindings.ts",
+      "import": "./src/bindings.ts"
     }
   },
   "bin": {

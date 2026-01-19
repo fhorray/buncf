@@ -1,53 +1,17 @@
-import { Link, useRouter } from "buncf/router";
-import { Zap, LogOut, User, Layout as LayoutIcon } from "lucide-react";
+import type { ReactNode } from 'react';
 
-
-
-export default function Layout({ children }: { children: React.ReactNode }) {
-  
-  const { pathname } = useRouter();
-
-  const navLinks = [
-    { href: "/", label: "Home" },
-    { href: "/playground", label: "Playground" },
-  ];
-
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen flex flex-col">
-      <nav className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-6">
-            <Link href="/" className="flex items-center gap-2 font-bold text-xl">
-              <Zap className="text-blue-500 fill-blue-500" size={24} />
-              <span>Buncf</span>
-            </Link>
-            
-            <div className="hidden md:flex items-center gap-4 text-sm font-medium">
-              {navLinks.map(link => (
-                <Link 
-                  key={link.href} 
-                  href={link.href}
-                  className={pathname === link.href ? "text-primary" : "text-muted-foreground hover:text-primary"}
-                >
-                  {link.label}
-                </Link>
-              ))}
-            </div>
-          </div>
+    <div className="min-h-screen bg-[#02040a] text-foreground font-sans selection:bg-primary/20">
+      {/* Abstract Background Elements */}
+      <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-[#00f0ff]/5 rounded-full blur-[120px]" />
+        <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-[#7000ff]/5 rounded-full blur-[120px]" />
+      </div>
 
-          <div className="flex items-center gap-4">
-            
-          </div>
-        </div>
-      </nav>
-
-      <main className="flex-1">
+      <div className="relative z-10 max-w-7xl mx-auto p-6 md:p-12">
         {children}
-      </main>
-
-      <footer className="border-t py-8 px-4 text-center text-sm text-muted-foreground bg-muted/20">
-        <p>&copy; {new Date().getFullYear()} Buncf Framework. Built with Bun & Cloudflare.</p>
-      </footer>
+      </div>
     </div>
   );
 }
