@@ -267,10 +267,13 @@ export default {
                 
                 return item.handler(request, () => dispatch(i + 1));
             };
-            return dispatch(0);
+            
+            // Wrap Middleware execution in Context
+            return runWithCloudflareContext({ env, ctx, cf: (request.cf || {}) }, () => dispatch(0));
         }
 
-        return finalHandler();
+        // Wrap Direct Handler execution in Context
+        return runWithCloudflareContext({ env, ctx, cf: (request.cf || {}) }, () => finalHandler());
     }
 };
 `;

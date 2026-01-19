@@ -21,9 +21,29 @@ export async function initBuncfDev(options?: {
 
       try {
         // 1. Try to use wrangler's getPlatformProxy (Standard way for Miniflare 3)
-        wrangler = await import("wran" + "gler");
-        if (wrangler.getPlatformProxy || wrangler.unstable_getPlatformProxy) {
-          const getProxy = wrangler.getPlatformProxy || wrangler.unstable_getPlatformProxy;
+        let wranglerPath;
+        try {
+          wranglerPath = Bun.resolveSync("wrangler", process.cwd());
+          // Fix: Bun might resolve to wrangler.json in CWD
+          if (wranglerPath.endsWith("wrangler.json") || wranglerPath.endsWith("wrangler.toml")) {
+            const pkgPath = Bun.resolveSync("wrangler/package.json", process.cwd());
+            const pkg = await import(pkgPath);
+            const main = pkg.default?.main || pkg.main || "wrangler-dist/cli.js";
+            wranglerPath = path.resolve(path.dirname(pkgPath), main);
+          }
+        } catch (e) {
+          // ignore
+        }
+        wrangler = await import(wranglerPath || "wrangler");
+        if (wrangler.default && !wrangler.getPlatformProxy) {
+          // Handle CJS default export case
+          wrangler = wrangler.default;
+        }
+
+        const proxyFn = wrangler.getPlatformProxy || wrangler.unstable_getPlatformProxy;
+
+        if (proxyFn) {
+          const getProxy = proxyFn;
           console.log(`[Buncf Dev] Using wrangler getPlatformProxy${options?.remote ? " (REMOTE)" : ""}...`);
 
           const proxy = await getProxy({
@@ -37,6 +57,7 @@ export async function initBuncfDev(options?: {
         }
       } catch (e) {
         // Fallback to manual setup if wrangler proxy fails
+        console.error("[Buncf Dev] Wrangler proxy error detail:", e);
         console.log("[Buncf Dev] Wrangler proxy not available, falling back to manual Miniflare.");
       }
 
@@ -104,6 +125,7 @@ export async function initBuncfDev(options?: {
           modules: true,
           script: "export default { fetch: () => new Response(null, {status: 404}) }",
           compatibilityDate: "2024-04-01",
+          d1Persist: ".wrangler/state/v3/d1",
           ...bindingsOptions
         });
 

@@ -1,15 +1,16 @@
 import { type CloudflareContext } from "./types";
 
-// @ts-ignore
-const isServer = typeof window === "undefined";
+const isServer = typeof window === "undefined" || (typeof process !== "undefined" && process.versions && !!process.versions.node) || (globalThis as any).navigator?.userAgent?.includes("Cloudflare-Workers");
 
 let AsyncLocalStorageClass: any;
-if (isServer) {
-  try {
-    AsyncLocalStorageClass = require("node:async_hooks").AsyncLocalStorage;
-  } catch (e) {
-    // Fallback if node:async_hooks is definitely not available
+try {
+  if (isServer) {
+    // ESM Support for Cloudflare Workers
+    const { AsyncLocalStorage } = await import("node:async_hooks");
+    AsyncLocalStorageClass = AsyncLocalStorage;
   }
+} catch (e) {
+  // Fallback if node:async_hooks is definitely not available
 }
 
 // Global AsyncLocalStorage instance shared across bundles

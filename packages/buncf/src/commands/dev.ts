@@ -117,99 +117,95 @@ export async function dev(entrypoint: string, flags: { verbose?: boolean, remote
   // 1. Client Build Watcher
   const clientEntry = ["./src/client.tsx", "./src/client.jsx", "./client.tsx", "./client.jsx"].find(path => Bun.file(path).size > 0);
 
-  if (clientEntry) {
-    // @ts-ignore
-    const { default: tailwind } = await import("bun-plugin-tailwind");
 
-    // Generate routes once
-    await generateRoutesManifest();
+  // Generate routes once
+  await generateRoutesManifest();
 
-    // Generate type-safe API client
-    // @ts-ignore
-    const { generateAllApiTypes } = await import("../codegen");
-    await generateAllApiTypes(process.cwd(), { verbose: flags.verbose });
+  // Generate type-safe API client
+  // @ts-ignore
+  const { generateAllApiTypes } = await import("../codegen");
+  await generateAllApiTypes(process.cwd(), { verbose: flags.verbose });
 
-    // Initial build + Watch
-    const buildClient = async () => {
-      try {
-        const plugins = tailwind ? [tailwind, deduplicateReactPlugin, ignoreCssPlugin, serverActionsClientPlugin] : [deduplicateReactPlugin, ignoreCssPlugin, serverActionsClientPlugin];
+  // Initial build + Watch
+  const buildClient = async () => {
+    try {
+      const plugins = [deduplicateReactPlugin, ignoreCssPlugin, serverActionsClientPlugin];
 
-        // Filter public env vars
-        const publicEnv = Object.keys(process.env).reduce((acc, key) => {
-          if (
-            key.startsWith("PUBLIC_") ||
-            key.includes("_PUBLIC_")
-          ) {
-            acc[key] = process.env[key];
-          }
-          return acc;
-        }, {} as Record<string, string | undefined>);
+      // Filter public env vars
+      const publicEnv = Object.keys(process.env).reduce((acc, key) => {
+        if (
+          key.startsWith("PUBLIC_") ||
+          key.includes("_PUBLIC_")
+        ) {
+          acc[key] = process.env[key];
+        }
+        return acc;
+      }, {} as Record<string, string | undefined>);
 
-        await Bun.build({
-          entrypoints: [clientEntry],
-          outdir: "./.buncf/cloudflare/assets",
-          target: "browser",
-          format: "esm",
-          minify: true,
-          define: {
-            "process.env.NODE_ENV": JSON.stringify("development"),
-            "process.env": JSON.stringify(publicEnv),
-            "process.browser": "true"
-          },
-          plugins,
-          naming: "[name].[ext]",
-        });
+      await Bun.build({
+        entrypoints: [clientEntry as string],
+        outdir: "./.buncf/cloudflare/assets",
+        target: "browser",
+        format: "esm",
+        minify: true,
+        define: {
+          "process.env.NODE_ENV": JSON.stringify("development"),
+          "process.env": JSON.stringify(publicEnv),
+          "process.browser": "true"
+        },
+        plugins,
+        naming: "[name].[ext]",
+      });
 
-        const cssEntries = ["./src/globals.css", "./src/index.css", "./globals.css", "./index.css"];
-        for (const cssFile of cssEntries) {
-          if (Bun.file(cssFile).size > 0) {
-            try {
-              await Bun.build({
-                entrypoints: [cssFile],
-                outdir: "./.buncf/cloudflare/assets",
-                target: "browser",
-                plugins,
-                naming: "[name].[ext]",
-                minify: true,
-              });
-            } catch (e) {
-              console.error("CSS build error:", e);
-            }
+      const cssEntries = ["./src/globals.css", "./src/index.css", "./globals.css", "./index.css"];
+      for (const cssFile of cssEntries) {
+        if (Bun.file(cssFile).size > 0) {
+          try {
+            await Bun.build({
+              entrypoints: [cssFile],
+              outdir: "./.buncf/cloudflare/assets",
+              target: "browser",
+              plugins,
+              naming: "[name].[ext]",
+              minify: true,
+            });
+          } catch (e) {
+            console.error("CSS build error:", e);
           }
         }
-
-        const indexCandidates = ["./src/index.html", "./index.html"];
-        for (const candidate of indexCandidates) {
-          if (fs.existsSync(candidate)) {
-            let html = fs.readFileSync(candidate, "utf8");
-            html = html
-              .replace(/src=["'](?:\.?\/)?(.*)\.(tsx|ts|jsx)["']/g, 'src="/$1.js"')
-              .replace(/href=["'](?:\.?\/)?(.*)\.css["']/g, 'href="/$1.css"');
-
-            // Ensure directory exists
-            if (!fs.existsSync("./.buncf/cloudflare/assets")) fs.mkdirSync("./.buncf/cloudflare/assets", { recursive: true });
-            fs.writeFileSync("./.buncf/cloudflare/assets/index.html", html);
-            break;
-          }
-        }
-
-        console.log(colors.dim("[wait]") + "  client & css built");
-      } catch (e) {
-        log.error("Client build failed");
       }
-    };
-    await buildClient();
 
-    let timer: ReturnType<typeof setTimeout>;
-    fs.watch(path.resolve(process.cwd(), "src"), { recursive: true }, (event, filename) => {
-      if (!filename) return;
-      clearTimeout(timer);
-      timer = setTimeout(async () => {
-        if (filename.includes("pages")) await generateRoutesManifest();
-        await buildClient();
-      }, 100);
-    });
-  }
+      const indexCandidates = ["./src/index.html", "./index.html"];
+      for (const candidate of indexCandidates) {
+        if (fs.existsSync(candidate)) {
+          let html = fs.readFileSync(candidate, "utf8");
+          html = html
+            .replace(/src=["'](?:\.?\/)?(.*)\.(tsx|ts|jsx)["']/g, 'src="/$1.js"')
+            .replace(/href=["'](?:\.?\/)?(.*)\.css["']/g, 'href="/$1.css"');
+
+          // Ensure directory exists
+          if (!fs.existsSync("./.buncf/cloudflare/assets")) fs.mkdirSync("./.buncf/cloudflare/assets", { recursive: true });
+          fs.writeFileSync("./.buncf/cloudflare/assets/index.html", html);
+          break;
+        }
+      }
+
+      console.log(colors.dim("[wait]") + "  client & css built");
+    } catch (e) {
+      log.error("Client build failed");
+    }
+  };
+  await buildClient();
+
+  let timer: ReturnType<typeof setTimeout>;
+  fs.watch(path.resolve(process.cwd(), "src"), { recursive: true }, (event, filename) => {
+    if (!filename) return;
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      if (filename.includes("pages")) await generateRoutesManifest();
+      await buildClient();
+    }, 100);
+  });
 
   // 2. Start Bun Server (Worker Runtime)
   log.step("Starting worker runtime...");

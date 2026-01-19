@@ -336,37 +336,8 @@ export const ${name} = async (input) => {
             }
           }
 
-          // 3b. Handle CSS (Tailwind processing)
-          if (filePath.endsWith(".css")) {
-            try {
-              let plugins = [];
-              try {
-                // @ts-ignore
-                const { default: tailwind } = await import("bun-plugin-tailwind");
-                plugins.push(tailwind);
-              } catch (e) { /* no plugin */ }
 
-              const result = await Bun.build({
-                entrypoints: [filePath],
-                // Use 'node' target for CSS build to allow plugin to use Node APIs (fs, path) during transformation
-                // The output is just CSS text, so it's safe for browser.
-                target: "node",
-                plugins,
-                minify: true,
-              });
-
-              if (result.success && result.outputs[0]) {
-                const text = await result.outputs[0].text();
-                return new Response(text, {
-                  headers: { "Content-Type": "text/css" },
-                });
-              }
-            } catch (e) {
-              console.error(`[buncf] Failed to bundle CSS ${filePath}:`, e);
-            }
-          }
-
-          // 3c. Serve other files directly or fallback if build failed
+          // 3b. Serve other files directly or fallback if build failed
           const file = Bun.file(filePath);
           const contentType = getContentType(filePath);
 
