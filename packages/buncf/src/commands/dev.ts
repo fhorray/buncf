@@ -8,7 +8,11 @@ import { bunToCloudflare } from "../plugin";
 // @ts-ignore
 import { log, colors } from "../utils/log";
 import { serverActionsClientPlugin, serverActionsWorkerPlugin, deduplicateReactPlugin } from "../plugins/server-actions";
+import { autoCssPlugin } from "../plugins/css";
 import { loadConfig } from "../utils/config";
+import { generateRoutesManifest } from "../utils/manifest";
+import { getPublicEnv } from "../utils/env";
+import { errorTemplateFn, clientErrorScriptCode } from "../utils/dev-templates";
 
 function showBanner() {
   console.log(colors.cyan(`
@@ -18,93 +22,6 @@ function showBanner() {
   |_____|_____|__|__||____|____||_|  vDEV
   ${colors.dim("Build & Deploy Bun to Cloudflare Workers")}
 `));
-}
-
-// Helper to generate client routes manifest
-async function generateRoutesManifest() {
-  try {
-    const pagesDir = path.resolve(process.cwd(), "src/pages");
-    if (!fs.existsSync(pagesDir)) { return; }
-    const glob = new Bun.Glob("**/*.{tsx,jsx,ts,js}");
-    const files = Array.from(glob.scanSync({ cwd: pagesDir, onlyFiles: true }));
-    const routeEntries = files.map((file) => {
-      const absFile = path.resolve(pagesDir, file);
-      let routePath = file.replace(/\.(tsx|jsx|ts|js)$/, "");
-      if (routePath.endsWith("index")) routePath = routePath.slice(0, -5);
-      if (routePath.endsWith("/")) routePath = routePath.slice(0, -1);
-      routePath = "/" + routePath.split(path.sep).join("/");
-      if (routePath === "") routePath = "/";
-      if (routePath.length > 1 && routePath.endsWith("/")) routePath = routePath.slice(0, -1);
-      routePath = routePath.replace(/\/+/g, "/");
-
-      const relPath = path.relative(".buncf", absFile).split(path.sep).join(path.posix.sep);
-      const importPath = relPath.startsWith(".") ? relPath : `./${relPath}`;
-      return `  "${routePath}": () => import("${importPath}")`;
-    });
-
-    const specialPages = ["_error", "_loading", "_notfound"];
-    for (const page of specialPages) {
-      let ext = ["tsx", "jsx", "ts", "js"].find(e => fs.existsSync(path.join(pagesDir, `${page}.${e}`)));
-      let searchDir = pagesDir;
-
-      if (!ext) {
-        const srcDir = path.resolve(process.cwd(), "src");
-        ext = ["tsx", "jsx", "ts", "js"].find(e => fs.existsSync(path.join(srcDir, `${page}.${e}`)));
-        if (ext) searchDir = srcDir;
-      }
-
-      if (ext) {
-        const fullPath = path.join(searchDir, `${page}.${ext}`);
-        const relPath = path.relative(path.resolve(".buncf"), fullPath).split(path.sep).join(path.posix.sep);
-        const importPath = relPath.startsWith(".") ? relPath : `./${relPath}`;
-        routeEntries.push(`  "/${page}": () => import("${importPath}")`);
-      }
-    }
-
-    const layoutEntries: string[] = [];
-    if (fs.existsSync(pagesDir)) {
-      const scanLayouts = (dir: string, baseRoute: string) => {
-        const files = fs.readdirSync(dir);
-        for (const file of files) {
-          const fullPath = path.join(dir, file);
-          const stat = fs.statSync(fullPath);
-          if (stat.isDirectory()) {
-            scanLayouts(fullPath, `${baseRoute}/${file}`);
-          } else if (file.match(/^_layout\.(tsx|jsx|ts|js)$/)) {
-            let routeKey = baseRoute === "" ? "/" : baseRoute;
-            if (!routeKey.startsWith("/")) routeKey = "/" + routeKey;
-
-            const relPath = path.relative(path.resolve(".buncf"), fullPath).split(path.sep).join(path.posix.sep);
-            const importPath = relPath.startsWith(".") ? relPath : `./${relPath}`;
-            layoutEntries.push(`  "${routeKey}": () => import("${importPath}")`);
-          }
-        }
-      };
-      scanLayouts(pagesDir, "");
-    }
-
-    const routesContent = `
-import { type ComponentType } from "react";
-export const routes: Record<string, () => Promise<{ default: ComponentType<any> }>> = {
-${routeEntries.join(",\n")}
-};
-export const layouts: Record<string, () => Promise<{ default: ComponentType<any> }>> = {
-${layoutEntries.join(",\n")}
-};
-
-declare module "buncf" {
-  interface BuncfTypeRegistry {
-    routes: {
-${routeEntries.map(e => e.split(":")[0]).filter(key => !key?.includes("[")).map(key => `      ${key}: true;`).join("\n")}
-    };
-  }
-}
-`;
-    if (!fs.existsSync(".buncf")) fs.mkdirSync(".buncf");
-    await Bun.write(".buncf/routes.ts", routesContent);
-  } catch (e) {
-    console.error("Failed to generate routes manifest (dev):", e);
-  }
 }
 
 
@@ -152,15 +69,10 @@ export async function dev(entrypoint: string, flags: { verbose?: boolean, remote
     try {
       const config = await loadConfig();
       const userPlugins = config.plugins || [];
-      const plugins = [deduplicateReactPlugin, serverActionsClientPlugin, ...userPlugins];
+      const plugins = [deduplicateReactPlugin, serverActionsClientPlugin, autoCssPlugin, ...userPlugins];
 
       // Filter public env vars
-      const publicEnv = Object.keys(process.env).reduce((acc, key) => {
-        if (key.startsWith("PUBLIC_") || key.includes("_PUBLIC_")) {
-          acc[key] = process.env[key];
-        }
-        return acc;
-      }, {} as Record<string, string | undefined>);
+      const publicEnv = getPublicEnv();
 
       // Initialize Buncf Plugins
       // @ts-ignore
@@ -171,6 +83,7 @@ export async function dev(entrypoint: string, flags: { verbose?: boolean, remote
       const combinedPlugins = [
         deduplicateReactPlugin,
         serverActionsClientPlugin,
+        autoCssPlugin,
         ...userPlugins,
         ...(pluginRegistry.buildPlugins || [])
       ];
@@ -266,182 +179,6 @@ export async function dev(entrypoint: string, flags: { verbose?: boolean, remote
   // --- ERROR OVERLAY RESOURCES ---
   // To avoid template literal hell, we define these as normal strings here, 
   // and inject them via JSON.stringify into the boot content.
-
-  const errorTemplateFn = `
-  function getErrorHtml(title, message, stack) {
-    // Parse stack for file link logic (runs on server to render initial HTML)
-    let fileLink = '';
-    
-    // Attempt cleanup of stack to find user file
-    // Format: at Function (<path>:<line>:<col>)
-    if (stack) {
-       // Search for strict file paths (e.g. C:/ or /User) avoiding internal/node_modules if possible
-       const lines = stack.split('\\n');
-       for (const line of lines) {
-          // crude match for file path with line/col
-          const match = line.match(/\\((?:[A-Z]:\\\\|\\/)([^:]+):(\\d+):(\\d+)\\)/) || 
-                        line.match(/at (?:[A-Z]:\\\\|\\/)([^:]+):(\\d+):(\\d+)/);
-          
-          if (match) {
-             const [_, file, line, col] = match;
-             if (!file.includes('node_modules') && !file.includes('buncf/src')) {
-                // If we found a likely user file
-                const vscodeUrl = "vscode://file/" + file + ":" + line + ":" + col;
-                // Add button html
-                fileLink = '<a href="' + vscodeUrl + '" class="btn open-btn">📝 Open in Editor</a>';
-                break; 
-             }
-          }
-       }
-    }
-
-    return \`<!DOCTYPE html>
-    <html>
-      <head>
-        <title>\${title}</title>
-        <style>
-          body { background: #0d1117; color: #e6edf3; font-family: system-ui, -apple-system, sans-serif; padding: 0; margin: 0; height: 100vh; display: flex; align-items: center; justify-content: center; }
-          .backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(4px); z-index: 9999; }
-          .error-box { position: relative; width: 90%; max-width: 900px; max-height: 90vh; background: #161b22; border: 1px solid #30363d; border-radius: 12px; box-shadow: 0 24px 48px rgba(0,0,0,0.5); display: flex; flex-direction: column; overflow: hidden; animation: slideIn 0.3s ease-out; z-index: 10000; }
-          .header { background: #21262d; padding: 1rem 1.5rem; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: start; }
-          .title-area h1 { color: #ff7b72; font-size: 1.1rem; margin: 0; font-weight: 600; display: flex; align-items: center; gap: 0.75rem; }
-          .title-area .badge { background: #7f1d1d; color: #fca5a5; font-size: 0.7rem; padding: 0.1rem 0.4rem; border-radius: 4px; border: 1px solid #ef4444; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-          .content { padding: 1.5rem; overflow-y: auto; }
-          .message { font-size: 1.25rem; font-weight: 500; line-height: 1.5; color: #e6edf3; margin-bottom: 1.5rem; white-space: pre-wrap; word-break: break-word; }
-          .stack-frame { background: #0d1117; padding: 1rem; border-radius: 8px; overflow-x: auto; border: 1px solid #30363d; font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.85rem; color: #d2a8ff; line-height: 1.6; }
-          .actions { padding: 1rem 1.5rem; border-top: 1px solid #30363d; background: #21262d; display: flex; justify-content: flex-end; gap: 0.75rem; }
-          .btn { appearance: none; background: transparent; border: 1px solid #30363d; color: #c9d1d9; padding: 0.4rem 0.8rem; border-radius: 6px; font-size: 0.85rem; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 0.4rem; font-weight: 500; text-decoration: none; }
-          .btn:hover { background: #30363d; color: #fff; }
-          .open-btn { background: #1f6feb; border-color: #1f6feb; color: #fff; }
-          .open-btn:hover { background: #388bfd; border-color: #388bfd; }
-          @keyframes slideIn { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
-        </style>
-      </head>
-      <body>
-        <div class="backdrop"></div>
-        <div class="error-box">
-          <div class="header">
-            <div class="title-area">
-              <h1><span class="badge">Error</span> \${title}</h1>
-            </div>
-          </div>
-          <div class="content">
-            <div class="message">\${message}</div>
-            \${stack ? '<div class="stack-frame">' + stack + '</div>' : ''}
-          </div>
-          <div class="actions">
-            \${fileLink}
-            <button class="btn" style="opacity: 0.7; cursor: not-allowed">Live Reload Active</button>
-          </div>
-        </div>
-        <script>
-        (function() {
-            const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-            const url = protocol + "//" + location.host + "/_buncf_livereload";
-            function connect() {
-                const ws = new WebSocket(url);
-                ws.onclose = () => { setTimeout(connect, 1000); };
-                ws.onmessage = (e) => { if (e.data === "reload") location.reload(); };
-            }
-            connect();
-        })();
-        </script>
-      </body>
-    </html>\`; 
-  }
-  `;
-
-  const clientErrorScriptCode = `
-<script>
-(function() {
-    // 1. Live Reload
-    const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-    const url = protocol + "//" + location.host + "/_buncf_livereload";
-    function connect() {
-        const ws = new WebSocket(url);
-        ws.onclose = () => { setTimeout(connect, 1000); };
-        ws.onmessage = (e) => {
-             if (e.data === "reload") location.reload(); 
-        };
-    }
-    connect();
-
-    // 2. Client Side Error Overlay
-    function showError(title, message, stack) {
-        if (document.getElementById('buncf-error-overlay')) return;
-
-        let fileUrl = null;
-        if (stack) {
-            // Match (at http://localhost:3000/src/pages/index.tsx:10:5)
-            const match = stack.match(/((?:http:\\/\\/|\\/)[^:]+):(\\d+):(\\d+)/);
-            if (match) {
-                let path = match[1];
-                try {
-                    const u = new URL(path);
-                    path = u.pathname; 
-                } catch(e) {}
-                
-                if (path.match(/\\.(tsx|ts|jsx|js)$/)) {
-                     // We store params to call server opener
-                     fileUrl = { path, line: match[2], col: match[3] };
-                }
-            }
-        }
-
-        const overlay = document.createElement('div');
-        overlay.id = 'buncf-error-overlay';
-        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);backdrop-filter:blur(4px);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:system-ui,-apple-system,sans-serif;animation:buncfSlideIn 0.2s ease-out;';
-        
-        let fileBtnHtml = '';
-        if (fileUrl) {
-            fileBtnHtml = '<button id="buncf-open-btn" style="background:#1f6feb;border:1px solid #1f6feb;color:#fff;padding:0.4rem 0.8rem;border-radius:6px;font-size:0.85rem;cursor:pointer;font-weight:500;display:flex;align-items:center;gap:0.4rem;">📝 Open in Editor</button>';
-        }
-
-        const cardHtml = \`
-           <div style="position:relative;width:90%;max-width:900px;max-height:90vh;background:#161b22;border:1px solid #30363d;border-radius:12px;box-shadow:0 24px 48px rgba(0,0,0,0.5);display:flex;flex-direction:column;overflow:hidden;color:#e6edf3;">
-             <div style="background:#21262d;padding:1rem 1.5rem;border-bottom:1px solid #30363d;display:flex;justify-content:space-between;align-items:start;">
-                <h1 style="color:#ff7b72;font-size:1.1rem;margin:0;font-weight:600;display:flex;align-items:center;gap:0.75rem;">
-                  <span style="background:#7f1d1d;color:#fca5a5;font-size:0.7rem;padding:0.1rem 0.4rem;border-radius:4px;border:1px solid #ef4444;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Runtime Error</span>
-                  \${title}
-                </h1>
-                <button id="buncf-close-btn" style="background:transparent;border:none;color:#8b949e;cursor:pointer;padding:4px;border-radius:4px;display:flex;">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                </button>
-             </div>
-             <div style="padding:1.5rem;overflow-y:auto;">
-               <div style="font-size:1.25rem;font-weight:500;line-height:1.5;color:#e6edf3;margin-bottom:1.5rem;white-space:pre-wrap;word-break:break-word;">\${message}</div>
-               \${stack ? '<div style="background:#0d1117;padding:1rem;border-radius:8px;overflow-x:auto;border:1px solid #30363d;font-family:monospace;font-size:0.85rem;color:#d2a8ff;line-height:1.6;">' + stack + '</div>' : ''}
-             </div>
-             <div style="padding:1rem 1.5rem;border-top:1px solid #30363d;background:#21262d;display:flex;justify-content:flex-end;gap:0.75rem;">
-                \${fileBtnHtml}
-             </div>
-           </div>
-           <style>@keyframes buncfSlideIn { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }</style>
-        \`;
-        
-        overlay.innerHTML = cardHtml;
-        document.body.appendChild(overlay);
-
-        document.getElementById('buncf-close-btn').onclick = () => overlay.remove();
-        
-        if (fileUrl) {
-            document.getElementById('buncf-open-btn').onclick = () => {
-                const url = '/_buncf/open-editor?file=' + encodeURIComponent(fileUrl.path) + '&line=' + fileUrl.line + '&col=' + fileUrl.col;
-                fetch(url).catch(e => console.error(e));
-            };
-        }
-    }
-
-    window.addEventListener('error', (event) => {
-        showError('Runtime Error', event.message, event.error ? event.error.stack : null);
-    });
-
-    window.addEventListener('unhandledrejection', (event) => {
-        showError('Unhandled Promise Rejection', event.reason.message || String(event.reason), event.reason.stack);
-    });
-})();
-</script>
-`;
 
   // Inject into boot.ts as proper strings
   const bootContent = `
