@@ -12,6 +12,8 @@ type CacheEntry = {
   promise?: Promise<any>;
 };
 
+const TTL = 5000; // 5 seconds
+
 export class LoaderClient {
   private cache = new Map<string, CacheEntry>();
   private listeners = new Set<() => void>();
@@ -23,9 +25,9 @@ export class LoaderClient {
   async fetch(key: string, loaderFn: () => Promise<any>, options?: { force?: boolean }) {
     let entry = this.cache.get(key);
 
-    // 1. Return cached if fresh and not forced
-    // TODO: Add TTL logic here if desired (e.g. 5 seconds)
-    if (entry && entry.status === "fresh" && !options?.force) {
+    // 1. Return cached if fresh, not forced, and not expired
+    const isExpired = entry && Date.now() - entry.timestamp > TTL;
+    if (entry && entry.status === "fresh" && !options?.force && !isExpired) {
       return entry.data;
     }
 

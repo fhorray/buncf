@@ -61,4 +61,27 @@ describe("LoaderClient", () => {
 
     expect(listener).toHaveBeenCalled();
   });
+
+  test("expires cache after TTL", async () => {
+    const client = new LoaderClient();
+    const loader = mock(async () => ({ time: Date.now() }));
+    const now = Date.now();
+    const dateMock = mock(() => now);
+    global.Date.now = dateMock;
+
+    // 1. First fetch, should call loader
+    await client.fetch("/api/ttl", loader);
+    expect(loader).toHaveBeenCalledTimes(1);
+
+    // 2. Second fetch, should be cached
+    await client.fetch("/api/ttl", loader);
+    expect(loader).toHaveBeenCalledTimes(1);
+
+    // 3. Advance time past TTL
+    dateMock.mockImplementation(() => now + 5001);
+
+    // 4. Third fetch, should call loader again
+    await client.fetch("/api/ttl", loader);
+    expect(loader).toHaveBeenCalledTimes(2);
+  });
 });
