@@ -55,9 +55,13 @@ async function main() {
         log.error("Please specify a project name: buncf init <project-name>");
         process.exit(1);
       }
+
+      const templateIndex = args.indexOf("--template");
+      const template = templateIndex !== -1 ? args[templateIndex + 1] : undefined;
+
       // Lazy load modular command
       const { init } = await import("./commands/init/index");
-      await init(projectName);
+      await init(projectName, { template });
       break;
     }
     case "build": {

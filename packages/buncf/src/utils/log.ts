@@ -1,6 +1,8 @@
 
 // Native Bun logging utility (Replaces chalk)
 
+const JULES_PURPLE = "#7c3aed";
+
 // Helper to get ANSI code
 const getColor = (color: string) => {
   // @ts-ignore
@@ -23,6 +25,7 @@ const mapColor = (name: string) => {
   switch (name) {
     case "dim": return "gray"; // dimmer gray
     case "bold": return "white"; // no direct bold in CSS colors, use white or implementation specific
+    case "purple": return JULES_PURPLE;
     default: return name;
   }
 };
@@ -34,24 +37,25 @@ export const log = {
   success: (msg: string) => console.log(style("✓ ", "green") + msg),
   warn: (msg: string) => console.log(style("⚠ ", "orange") + msg), // yellow is sometimes hard to read, orange?
   error: (msg: string) => console.error(style("✖ ", "red") + msg),
-  step: (msg: string) => console.log(style("➜ ", "cyan") + msg),
-  title: (msg: string) => console.log("\n" + style(msg, "cyan") + "\n"), // Bold isn't a color, used cyan for title
+  step: (msg: string) => console.log(style("➜ ", "purple") + msg),
+  title: (msg: string) => console.log("\n" + style(msg, "purple") + "\n"), // Changed to purple
   dim: (msg: string) => style(msg, "dim"),
   cyan: (msg: string) => style(msg, "cyan"),
   green: (msg: string) => style(msg, "green"),
   yellow: (msg: string) => style(msg, "gold"), // 'gold' or 'yellow'
   red: (msg: string) => style(msg, "red"),
   blue: (msg: string) => style(msg, "blue"),
+  purple: (msg: string) => style(msg, "purple"),
   bold: (msg: string) => style(msg, "white"), // Fallback
   box: (msg: string) => {
     const lines = msg.split("\n");
     const width = Math.max(0, ...lines.map(l => l.length)) + 4;
-    const border = style("─".repeat(width), "cyan");
-    console.log(style("┌", "cyan") + border + style("┐", "cyan"));
+    const border = style("─".repeat(width), "purple");
+    console.log(style("┌", "purple") + border + style("┐", "purple"));
     lines.forEach(line => {
-      console.log(style("│", "cyan") + "  " + line + " ".repeat(width - line.length - 2) + style("│", "cyan"));
+      console.log(style("│", "purple") + "  " + line + " ".repeat(width - line.length - 2) + style("│", "purple"));
     });
-    console.log(style("└", "cyan") + border + style("┘", "cyan"));
+    console.log(style("└", "purple") + border + style("┘", "purple"));
   },
   table: (headers: string[], rows: string[][]) => {
     const colWidths = headers.map((h, i) => {
@@ -81,6 +85,7 @@ export const colors = {
   yellow: (msg: string) => style(msg, "gold"),
   red: (msg: string) => style(msg, "red"),
   blue: (msg: string) => style(msg, "blue"),
+  purple: (msg: string) => style(msg, "purple"),
   dim: (msg: string) => style(msg, "gray"),
   bold: (msg: string) => style(msg, "white"), // approximation
 };
