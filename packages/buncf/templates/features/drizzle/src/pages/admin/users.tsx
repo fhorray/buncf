@@ -1,55 +1,4 @@
 
-export const drizzleConfig = `
-import { defineConfig } from "drizzle-kit";
-export default defineConfig({
-  dialect: "sqlite",
-  schema: "./src/db/schema.ts",
-  out: "./migrations",
-  driver: "d1-http",
-});
-`;
-
-export const dbSchema = `
-import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
-
-export const users = sqliteTable("users", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  email: text("email").notNull().unique(),
-  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
-});
-
-export const sessions = sqliteTable("sessions", {
-  id: text("id").primaryKey(),
-  userId: text("user_id").notNull().references(() => users.id),
-  expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
-});
-`;
-
-export const dbLib = `
-import { drizzle } from "drizzle-orm/d1";
-import { getCloudflareContext } from "buncf";
-import * as schema from "./schema";
-
-export async function getDb() {
-  const ctx = await getCloudflareContext();
-  if (!ctx?.env?.DB) throw new Error("Cloudflare D1 binding 'DB' not found");
-  return drizzle(ctx.env.DB, { schema });
-}
-`;
-
-export const usersApi = `
-import { getDb } from "@/db";
-import { users } from "@/db/schema";
-
-export default async () => {
-  const db = await getDb();
-  const allUsers = await db.select().from(users);
-  return Response.json(allUsers);
-};
-`;
-
-export const adminUsersPage = `
 import { useEffect, useState } from "react";
 import { $api } from "$api";
 import { Button } from "@/components/ui/button";
@@ -107,4 +56,3 @@ export default function AdminUsersPage() {
     </div>
   );
 }
-`;
