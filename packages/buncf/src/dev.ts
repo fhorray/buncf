@@ -152,30 +152,48 @@ export async function initBuncfDev(options?: {
         env.ASSETS = {
           fetch: async (req: Request) => {
             const url = new URL(req.url);
-            let filePath = path.join(process.cwd(), ".buncf/cloudflare/assets", url.pathname);
+            const assetsRoot = path.join(process.cwd(), ".buncf/cloudflare/assets");
+            let requestedPath = path.join(assetsRoot, url.pathname);
 
-            // SPA / Directory Fallback
-            if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
-              const indexFile = path.join(process.cwd(), ".buncf/cloudflare/assets/index.html");
-              if (fs.existsSync(indexFile)) filePath = indexFile;
+            try {
+              const stats = await fs.promises.stat(requestedPath);
+              if (stats.isDirectory()) {
+                // If it's a directory, immediately switch to index.html
+                requestedPath = path.join(assetsRoot, "index.html");
+              }
+            } catch (e: any) {
+              // If stat fails (e.g., ENOENT), it's not a file or directory that exists.
+              // Fallback to index.html for SPA routing.
+              if (e.code === 'ENOENT') {
+                requestedPath = path.join(assetsRoot, "index.html");
+              } else {
+                // For other errors, log it and return 404.
+                console.error("[Buncf Dev] Asset serving stat error:", e);
+                return new Response("Not Found", { status: 404 });
+              }
             }
 
-            if (fs.existsSync(filePath) && !fs.statSync(filePath).isDirectory()) {
-              const content = fs.readFileSync(filePath);
-              const ext = path.extname(filePath);
+            const file = Bun.file(requestedPath);
+            if (await file.exists()) {
+              // Explicitly set Content-Type as it may not be automatically set in all environments
+              const ext = path.extname(requestedPath);
               const mimeTypes: Record<string, string> = {
                 ".html": "text/html",
                 ".js": "text/javascript",
                 ".css": "text/css",
+                ".txt": "text/plain",
                 ".png": "image/png",
                 ".jpg": "image/jpeg",
                 ".svg": "image/svg+xml",
-                ".json": "application/json"
+                ".json": "application/json",
               };
-              return new Response(content, {
-                headers: { "Content-Type": mimeTypes[ext] || "application/octet-stream" }
+              return new Response(file, {
+                headers: {
+                  "Content-Type": mimeTypes[ext] || "application/octet-stream",
+                },
               });
             }
+
             return new Response("Not Found", { status: 404 });
           }
         };
