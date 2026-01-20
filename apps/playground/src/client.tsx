@@ -7,6 +7,7 @@ import { createRoot } from 'react-dom/client';
 import { BuncfRouter } from 'buncf/router';
 import Layout from './_layout';
 import { routes, layouts } from '../.buncf/routes';
+import './globals.css';
 
 const elem = document.getElementById('root');
 if (!elem) {
