@@ -7,7 +7,8 @@ import { generateCloudflareTypes } from "../utils/typegen";
 import { bunToCloudflare } from "../plugin";
 // @ts-ignore
 import { log, colors } from "../utils/log";
-import { serverActionsClientPlugin, serverActionsWorkerPlugin, deduplicateReactPlugin, ignoreCssPlugin } from "../plugins/server-actions";
+import { serverActionsClientPlugin, serverActionsWorkerPlugin, deduplicateReactPlugin } from "../plugins/server-actions";
+import { loadConfig } from "../utils/config";
 
 function showBanner() {
   console.log(colors.cyan(`
@@ -149,7 +150,9 @@ export async function dev(entrypoint: string, flags: { verbose?: boolean, remote
 
   const buildClient = async () => {
     try {
-      const plugins = [deduplicateReactPlugin, ignoreCssPlugin, serverActionsClientPlugin];
+      const config = await loadConfig();
+      const userPlugins = config.plugins || [];
+      const plugins = [deduplicateReactPlugin, serverActionsClientPlugin, ...userPlugins];
 
       // Filter public env vars
       const publicEnv = Object.keys(process.env).reduce((acc, key) => {
@@ -159,6 +162,18 @@ export async function dev(entrypoint: string, flags: { verbose?: boolean, remote
         return acc;
       }, {} as Record<string, string | undefined>);
 
+      // Initialize Buncf Plugins
+      // @ts-ignore
+      const { initializePlugins } = await import("../plugin-registry");
+      const buncfPluginsConfig = config.buncfPlugins || [];
+      const pluginRegistry = await initializePlugins(buncfPluginsConfig);
+
+      const combinedPlugins = [
+        deduplicateReactPlugin,
+        serverActionsClientPlugin,
+        ...userPlugins,
+        ...(pluginRegistry.buildPlugins || [])
+      ];
       await Bun.build({
         entrypoints: [clientEntry as string],
         outdir: "./.buncf/cloudflare/assets",
@@ -170,7 +185,7 @@ export async function dev(entrypoint: string, flags: { verbose?: boolean, remote
           "process.env": JSON.stringify(publicEnv),
           "process.browser": "true"
         },
-        plugins,
+        plugins: combinedPlugins,
         naming: "[name].[ext]",
       });
 
@@ -182,12 +197,31 @@ export async function dev(entrypoint: string, flags: { verbose?: boolean, remote
               entrypoints: [cssFile],
               outdir: "./.buncf/cloudflare/assets",
               target: "browser",
-              plugins,
+              plugins: combinedPlugins,
               naming: "[name].[ext]",
               minify: true,
             });
           } catch (e) {
             console.error("CSS build error:", e);
+          }
+        }
+      }
+
+      // Copy Plugin Assets
+      if (pluginRegistry.assets) {
+        if (!fs.existsSync("./.buncf/cloudflare/assets")) fs.mkdirSync("./.buncf/cloudflare/assets", { recursive: true });
+        for (const [virtualPath, sourcePath] of Object.entries(pluginRegistry.assets)) {
+          try {
+            // Remove leading slash for destination inside assets dir
+            const destName = virtualPath.startsWith("/") ? virtualPath.slice(1) : virtualPath;
+            // If the virtualPath is complex (e.g. _cms/admin.js), ensure dir exists
+            const destPath = path.resolve("./.buncf/cloudflare/assets", destName);
+            const destDir = path.dirname(destPath);
+            if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+
+            await Bun.write(destPath, Bun.file(sourcePath));
+          } catch (e) {
+            console.error(`Failed to copy plugin asset ${virtualPath}:`, e);
           }
         }
       }
@@ -411,7 +445,6 @@ export async function dev(entrypoint: string, flags: { verbose?: boolean, remote
 
   // Inject into boot.ts as proper strings
   const bootContent = `
-import worker from "./dev.js";
 import * as fs from "node:fs";
 // @ts-ignore
 import { initBuncfDev, getDevContext } from "${devModulePath}";
@@ -428,6 +461,10 @@ const clientErrorScript = ${JSON.stringify(clientErrorScriptCode)};
 
 const remote = ${JSON.stringify(flags.remote || false)};
 await initBuncfDev({ remote });
+
+// Import worker dynamically AFTER initializing dev context
+// This prevents TLA in worker (e.g. plugin initialization) from running before bindings are ready
+const { default: worker } = await import("./dev.js");
 
 const checkBuildError = async () => {
     try {
@@ -523,6 +560,7 @@ console.log(
 
   const buildWorker = async () => {
     try {
+      const config = await loadConfig();
       await Bun.build({
         entrypoints: [entrypoint],
         minify: true,
@@ -535,7 +573,7 @@ console.log(
           "process.env.NODE_ENV": JSON.stringify("development"),
         },
         // @ts-ignore
-        plugins: [bunToCloudflare(entrypoint), serverActionsWorkerPlugin],
+        plugins: [bunToCloudflare(entrypoint), serverActionsWorkerPlugin, ...(config.plugins || [])],
         sourcemap: "inline",
         // @ts-ignore
         external: ["buncf", "buncf/dev"]

@@ -3,29 +3,24 @@
  */
 
 let instance: any = null;
-let initPromise: Promise<any> | null = null;
 
-export async function initAsyncLocalStorage() {
+export function initAsyncLocalStorage() {
   if (instance) return instance;
 
-  if (!initPromise) {
-    initPromise = (async () => {
-      try {
-        const { AsyncLocalStorage } = await import("node:async_hooks");
-        instance = new AsyncLocalStorage();
-        return instance;
-      } catch (e) {
-        // Fallback for environments where node:async_hooks is truly unavailable
-        return null;
-      }
-    })();
+  try {
+    // try to require synchronously if possible (node/bun)
+    const { AsyncLocalStorage } = require("node:async_hooks");
+    instance = new AsyncLocalStorage();
+  } catch (e) {
+    // Fallback or ignore for browser/pure-worker environments
   }
 
-  return initPromise;
+  return instance;
 }
 
 export function getAsyncLocalStorage() {
-  // Note: This returns null if not initialized yet. 
-  // We should initialize it at the very start of the worker.
+  if (!instance) {
+    initAsyncLocalStorage();
+  }
   return instance;
 }

@@ -5,7 +5,8 @@ import type {
   BunRequest,
   BunShimType,
   CloudflareEnv,
-  BunHandlerFunction
+  BunHandlerFunction,
+  ExecutionContext
 } from './types';
 import { runWithCloudflareContext, getCloudflareContext } from './context';
 
@@ -54,7 +55,7 @@ async function globalServeAsset(req: Request, assetPrefix: string = "assets"): P
 
   // Type-safe Binding Access
   const ctx = getCloudflareContext();
-  const assetsBinding = ctx?.env?.ASSETS || (globalThis.Bun as any)?.ASSETS || (typeof (globalThis as any).env !== 'undefined' ? (globalThis as any).env.ASSETS : null);
+  const assetsBinding = ctx?.env?.ASSETS;
 
   if (!assetsBinding) return null;
 
@@ -233,7 +234,7 @@ export const __BunShim__: BunShimType = {
 
 // Global Injection
 try {
-  if (typeof globalThis.Bun === "undefined") {
+  if (typeof (globalThis).Bun === "undefined") {
     (globalThis as any).Bun = __BunShim__;
   }
 } catch (e) { }
@@ -241,19 +242,49 @@ try {
 
 // --- RUNTIME HANDLER (Internal use) ---
 export const buncfRuntimeHandler = {
-  async fetch(request: Request, env: CloudflareEnv, ctx: any) {
-    if (!__handler__ || !__handler__.fetch) {
-      return new Response("Error: Bun.serve not initialized or missing fetch handler", { status: 500 });
+  async fetch(request: Request, env: CloudflareEnv, ctx: ExecutionContext) {
+    if (!__handler__) {
+      return new Response("Error: Bun.serve not initialized", { status: 500 });
     }
 
-    // Direct execution (Fallback if factory is not used)
-    const res = await __handler__!.fetch!(request, { ...(__handler__ || {}) });
-
-    // Asset Fallback
-    if (res.status === 404 && request.method === "GET") {
-      const assetResponse = await globalServeAsset(request, __handler__!.assetPrefix);
-      if (assetResponse) return assetResponse;
+    // Sync environment variables to Bun.env shim
+    if (__BunShim__.env) {
+      Object.assign(__BunShim__.env, env);
     }
-    return res;
+
+    try {
+      if (!__handler__.fetch) {
+        return new Response("Error: Missing fetch handler", { status: 500 });
+      }
+
+      // Execute request with Cloudflare context
+      return await runWithCloudflareContext({ env, ctx }, async () => {
+        const res = await __handler__!.fetch!(request, { ...(__handler__ || {}) });
+
+        // Asset Fallback
+        if (res.status === 404 && request.method === "GET") {
+          const assetResponse = await globalServeAsset(request, __handler__!.assetPrefix);
+          if (assetResponse) return assetResponse;
+        }
+        return res;
+      });
+    } catch (e: unknown) {
+      const error = e instanceof Error ? e : new Error(String(e));
+
+      // Use custom error handler if provided
+      if (__handler__.error) {
+        try {
+          return await __handler__.error(error);
+        } catch (err) {
+          console.error("[buncf] Error handler threw:", err);
+          return new Response(error.message, { status: 500 });
+        }
+      }
+
+      console.error("[buncf] Runtime error:", error);
+      return new Response(error.message, { status: 500 });
+    }
   },
 };
+
+export default buncfRuntimeHandler;

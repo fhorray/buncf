@@ -9,11 +9,11 @@ import { createPagesRouter, type PageMatch } from "./pages";
 import * as fs from "fs";
 import * as path from "path";
 import { initBuncfDev, getDevContext } from "../dev";
-import { runWithCloudflareContext, getCloudflareContext } from "../context";
-import type { CloudflareEnv, ExecutionContext } from "../types";
+import { getCloudflareContext, runWithCloudflareContext } from "../context";
+import type { CloudflareEnv, ExecutionContext, BuncfPluginContext } from "../types";
 import { handleAction } from "../action";
 import { serverActions as prodActions } from "../actions-registry";
-import { serverActionsClientPlugin, deduplicateReactPlugin, ignoreCssPlugin } from "../plugins/server-actions";
+import { serverActionsClientPlugin, deduplicateReactPlugin } from "../plugins/server-actions";
 
 // Server-side exports
 export { createApiRouter } from "./api";
@@ -41,7 +41,9 @@ export interface CreateAppOptions {
   /** Injected HTML content for SPA fallback (no file access needed) */
   indexHtmlContent?: string;
   /** Injected static route manifest for build-time router (Internal use) */
-  staticRoutes?: { api?: any; pages?: any };
+  staticRoutes?: { api?: any; pages?: any; layouts?: any };
+  /** Plugin route handler (Internal use - injected by worker-factory) */
+  pluginRouteHandler?: ((req: Request, ctx: BuncfPluginContext) => Promise<Response | null>) | null;
   /** Custom error handler for unhandled exceptions */
   onError?: (error: Error, request: Request) => Response | Promise<Response>;
 }
@@ -57,6 +59,7 @@ export function createApp(options: CreateAppOptions = {}) {
     indexHtml,
     staticRoutes,
     indexHtmlContent: injectedHtml,
+    pluginRouteHandler,
   } = options;
 
   // Initialize routers
@@ -180,6 +183,20 @@ export function createApp(options: CreateAppOptions = {}) {
 
       console.error(`[buncf] Action Not Found or Invalid: ${actionId}`);
       return new Response(`Action Not Found: ${actionId}`, { status: 404 });
+    }
+
+    // 0.5. Try Plugin Routes (before user routes)
+    if (pluginRouteHandler) {
+      const cfContext = getCloudflareContext();
+      const pluginCtx: BuncfPluginContext = {
+        env: cfContext.env,
+        ctx: cfContext.ctx,
+        request: req,
+      };
+      const pluginResponse = await pluginRouteHandler(req, pluginCtx);
+      if (pluginResponse) {
+        return pluginResponse;
+      }
     }
 
     // 1. Try API routes first
@@ -309,7 +326,7 @@ export const ${name} = async (input) => {
                 entrypoints: [filePath],
                 format: "esm",
                 minify: true,
-                plugins: [deduplicateReactPlugin, ignoreCssPlugin, serverActionsClientPlugin],
+                plugins: [deduplicateReactPlugin, serverActionsClientPlugin],
               });
 
               if (result.success && result.outputs[0]) {

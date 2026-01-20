@@ -62,7 +62,9 @@ export const bunToCloudflare = (entrypointPath?: string): BunPlugin => ({
       const loader = args.path.endsWith("sx") ? "tsx" : "ts";
 
       // Prepare Injections
-      const runtimeNoExport = runtimeCode.replace("export const buncfRuntimeHandler =", "const __worker_export__ =");
+      const runtimeNoExport = runtimeCode
+        .replace("export const buncfRuntimeHandler =", "const __worker_export__ =")
+        .replace(/export\s+default\s+buncfRuntimeHandler;?/g, "");
 
       // Inject Constants (Static Routes)
       let injectedRoutesCode = "";
@@ -166,10 +168,12 @@ const __INDEX_HTML_CONTENT__ = \`${indexHtml}\`;
       let processedCode = originalCode;
 
       // Inject Routes into createApp
+      // Inject Routes into createApp
       const createAppRegex = /createApp\s*\(\s*(\{?)/;
       processedCode = processedCode.replace(createAppRegex, (match, brace) => {
-        if (brace) return `createApp({ staticRoutes: { api: __STATIC_API_ROUTES__, pages: __STATIC_PAGES_ROUTES__, layouts: __STATIC_LAYOUTS_ROUTES__ }, indexHtmlContent: __INDEX_HTML_CONTENT__, `;
-        return `createApp({ staticRoutes: { api: __STATIC_API_ROUTES__, pages: __STATIC_PAGES_ROUTES__, layouts: __STATIC_LAYOUTS_ROUTES__ }, indexHtmlContent: __INDEX_HTML_CONTENT__ }`;
+        const injection = `staticRoutes: { api: __STATIC_API_ROUTES__, pages: __STATIC_PAGES_ROUTES__, layouts: __STATIC_LAYOUTS_ROUTES__ }, indexHtmlContent: __INDEX_HTML_CONTENT__, pluginRouteHandler: __PLUGIN_ROUTE_HANDLER__, `;
+        if (brace) return `createApp({ ${injection}`;
+        return `createApp({ ${injection} }`;
       });
 
       // Shim Bun Imports
@@ -193,10 +197,32 @@ const __INDEX_HTML_CONTENT__ = \`${indexHtml}\`;
         }
       }
 
+      // Plugin Injection
+      let pluginImportCode = "";
+      let pluginInitCode = "const __PLUGIN_ROUTE_HANDLER__ = null;";
+
+      const configPath = path.resolve(process.cwd(), "buncf.config.ts");
+      if (fs.existsSync(configPath)) {
+        const entryDir = path.dirname(args.path);
+        const relConfigPath = "./" + path.relative(entryDir, configPath).split(path.sep).join(path.posix.sep);
+
+        pluginImportCode = `
+import { initializePlugins } from "buncf";
+import __BUNCF_CONFIG__ from "${relConfigPath}";
+`;
+        pluginInitCode = `
+const __PLUGIN_REGISTRY__ = await initializePlugins(__BUNCF_CONFIG__.buncfPlugins || []);
+const __PLUGIN_ROUTE_HANDLER__ = __PLUGIN_REGISTRY__.routeHandler;
+`;
+      }
+
       const combinedCode = `
 ${runtimeNoExport}
 ${injectedRoutesCode}
 ${middlewareImportCode}
+${pluginImportCode}
+${pluginInitCode}
+
 // --- USER CODE ---
 ${processedCode}
 

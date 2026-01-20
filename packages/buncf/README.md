@@ -57,6 +57,24 @@ bun add buncf
 | `buncf dev --remote` | Use live Cloudflare bindings     |
 | `buncf build`        | Production build                 |
 | `buncf deploy`       | Build and deploy to Workers      |
+| `buncf types`        | Generate TypeScript definitions  |
+
+---
+
+## ⚙️ Configuration
+
+Buncf supports an optional `buncf.config.ts` file in your project root. This file allows you to extend the build process with custom **Bun Plugins**.
+
+```typescript
+// buncf.config.ts
+import { tailwind } from 'bun-plugin-tailwind';
+
+export default {
+  plugins: [tailwind],
+};
+```
+
+This is particularly useful for adding support for CSS-in-JS, PostCSS, or specialized loaders.
 
 ---
 
@@ -388,10 +406,15 @@ export default [
 @import 'tailwindcss';
 ```
 
+> [!IMPORTANT]
+> To process Tailwind directives, you MUST register the `bun-plugin-tailwind` in your `buncf.config.ts` as shown in the **Configuration** section.
+
+````
+
 ```tsx
 // src/client.tsx
 import './globals.css';
-```
+````
 
 ### Static Assets
 

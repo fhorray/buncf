@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
-import { renderApp } from "../src/server/renderer";
 import * as React from "react";
+import { renderApp } from "../src/server/renderer";
 
 describe("SSR Renderer", () => {
   test("renderApp returns a readable stream", async () => {

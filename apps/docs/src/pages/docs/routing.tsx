@@ -1,91 +1,104 @@
-import React from "react";
-import { CodeBlock } from "@/components/ui/code-block";
+import { CodeBlock } from "@/components/code-block";
+import { PageHeader, Paragraph, TableWrapper, DocNavigation, InlineCode } from "@/components/docs/doc-components";
+import { Route } from "lucide-react";
 
-export const meta = () => [{ title: "Routing - Buncf Docs" }];
-
-export default function RoutingDocs() {
+export default function RoutingPage() {
   return (
-    <div className="space-y-10 max-w-4xl">
-      <div className="space-y-4">
-        <h1 className="scroll-m-20 text-4xl font-bold tracking-tight lg:text-5xl">File-System Routing</h1>
-        <p className="text-xl text-muted-foreground">
-          Buncf automatically scans <code>src/api/</code> and <code>src/pages/</code> to generate routes.
-        </p>
-      </div>
+    <article className="px-6 py-12 lg:px-12">
+      <PageHeader
+        icon={Route}
+        title="File-System Routing"
+        description="Learn how buncf maps files to routes automatically."
+      />
 
-      <div className="space-y-6">
-        <h2 className="scroll-m-20 border-b pb-2 text-3xl font-semibold tracking-tight first:mt-0" id="overview">Overview</h2>
-        <CodeBlock filename="Project Structure" code={`src/
-├── api/
-│   ├── hello.ts         → GET/POST /api/hello
-│   └── users/[id].ts    → GET/PUT/DELETE /api/users/:id
-└── pages/
-    ├── index.tsx        → /
-    ├── about.tsx        → /about
-    └── blog/[slug].tsx  → /blog/:slug`} />
-      </div>
+      <section className="mb-10">
+        <h2 className="text-xl font-bold mb-4">How it Works</h2>
+        <Paragraph>
+          buncf uses a file-system based router. Simply create files in the <InlineCode>src/api/</InlineCode> 
+          or <InlineCode>src/pages/</InlineCode> directories and they become routes automatically.
+        </Paragraph>
+      </section>
 
-      <div className="space-y-6">
-        <h2 className="scroll-m-20 border-b pb-2 text-3xl font-semibold tracking-tight" id="api-routes">API Routes</h2>
-        <p className="leading-7">
-          Export HTTP method handlers from files in <code>src/api/</code>.
-        </p>
-        <CodeBlock filename="src/api/users/[id].ts" code={`export function GET(req: Request & { params: { id: string } }) {
-  return Response.json({ userId: req.params.id });
-}
+      <section className="mb-10">
+        <h2 className="text-xl font-bold mb-4">Dynamic Segments</h2>
+        <Paragraph>
+          Use brackets to create dynamic route segments:
+        </Paragraph>
+        <TableWrapper>
+          <thead className="bg-secondary/30">
+            <tr>
+              <th className="text-left p-3 font-semibold">Pattern</th>
+              <th className="text-left p-3 font-semibold">Example URL</th>
+              <th className="text-left p-3 font-semibold">Params</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[
+              { pattern: "[id].tsx", example: "/users/123", params: '{ id: "123" }' },
+              { pattern: "[...slug].tsx", example: "/docs/a/b/c", params: '{ slug: "a/b/c" }' },
+              { pattern: "[[optional]].tsx", example: "/ or /page", params: '{ optional?: "page" }' },
+            ].map((item) => (
+              <tr key={item.pattern} className="border-t border-border/50">
+                <td className="p-3 font-mono text-neon">{item.pattern}</td>
+                <td className="p-3 text-muted-foreground">{item.example}</td>
+                <td className="p-3 font-mono text-sm">{item.params}</td>
+              </tr>
+            ))}
+          </tbody>
+        </TableWrapper>
+      </section>
 
-export function PUT(req: Request & { params: { id: string } }) {
-  return Response.json({ updated: req.params.id });
-}
+      <section className="mb-10">
+        <h2 className="text-xl font-bold mb-4">Route Priority</h2>
+        <Paragraph>
+          When multiple routes could match a URL, buncf uses the following priority:
+        </Paragraph>
+        <ol className="list-decimal list-inside text-muted-foreground space-y-2 ml-4 mb-4">
+          <li>Static routes (e.g., <InlineCode>/about</InlineCode>)</li>
+          <li>Dynamic routes (e.g., <InlineCode>/users/[id]</InlineCode>)</li>
+          <li>Catch-all routes (e.g., <InlineCode>/docs/[...slug]</InlineCode>)</li>
+          <li>Optional catch-all routes (e.g., <InlineCode>/[[...path]]</InlineCode>)</li>
+        </ol>
+      </section>
 
-export function DELETE(req: Request & { params: { id: string } }) {
-  return Response.json({ deleted: req.params.id });
-}`} />
-      </div>
+      <section className="mb-10">
+        <h2 className="text-xl font-bold mb-4">Route Groups</h2>
+        <Paragraph>
+          Use parentheses to create route groups that don't affect the URL:
+        </Paragraph>
+        <CodeBlock
+          code={`src/pages/
+├── (auth)/
+│   ├── login.tsx      → /login
+│   └── register.tsx   → /register
+└── (dashboard)/
+    ├── _layout.tsx    # Shared layout
+    ├── index.tsx      → /
+    └── settings.tsx   → /settings`}
+          language="text"
+          showLineNumbers={false}
+        />
+      </section>
 
-       <div className="space-y-6">
-        <h2 className="scroll-m-20 border-b pb-2 text-3xl font-semibold tracking-tight" id="page-routes">Page Routes</h2>
-        <p className="leading-7">
-          Export React components from files in <code>src/pages/</code>.
-        </p>
-        <CodeBlock filename="src/pages/blog/[slug].tsx" code={`import { useParams } from "buncf/router";
+      <section className="mb-10">
+        <h2 className="text-xl font-bold mb-4">Index Routes</h2>
+        <Paragraph>
+          Files named <InlineCode>index.tsx</InlineCode> or <InlineCode>index.ts</InlineCode> match 
+          the directory path:
+        </Paragraph>
+        <CodeBlock
+          code={`src/pages/index.tsx        → /
+src/pages/users/index.tsx  → /users
+src/api/users/index.ts     → /api/users`}
+          language="text"
+          showLineNumbers={false}
+        />
+      </section>
 
-export default function BlogPost() {
-  const { slug } = useParams();
-  return <h1>Post: {slug}</h1>;
-}`} />
-      </div>
-
-      <div className="space-y-6">
-        <h2 className="scroll-m-20 border-b pb-2 text-3xl font-semibold tracking-tight" id="hono">Hono Integration</h2>
-        <p className="leading-7">
-          Buncf fully supports <a href="https://hono.dev" className="text-pink-500 hover:underline">Hono</a> for more complex API needs.
-        </p>
-        <CodeBlock filename="src/api/[...route].ts" code={`import { Hono } from "hono";
-const app = new Hono().basePath("/api");
-
-app.get("/hello", (c) => c.json({ message: "Hello from Hono!" }));
-app.get("/users", (c) => c.json([{ id: 1, name: "Alice" }]));
-
-// Export Hono's fetch handler directly
-export default app.fetch;`} />
-      </div>
-      
-       <div className="space-y-6">
-        <h2 className="scroll-m-20 border-b pb-2 text-3xl font-semibold tracking-tight" id="error-pages">Error Pages</h2>
-        <p className="leading-7">
-           Create special files in <code>src/pages/</code> to customize global states:
-        </p>
-        <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
-            <li><code>_error.tsx</code> - Global Error Boundary</li>
-            <li><code>_loading.tsx</code> - Global Loading State (Suspense)</li>
-            <li><code>_notfound.tsx</code> - 404 Page</li>
-        </ul>
-        <CodeBlock filename="src/pages/_notfound.tsx" code={`export default function NotFound() {
-  return <h1>404 - Page Not Found</h1>;
-}`} />
-      </div>
-
-    </div>
+      <DocNavigation
+        prev={{ href: "/docs/structure", label: "Project Structure" }}
+        next={{ href: "/docs/api-routes", label: "API Routes" }}
+      />
+    </article>
   );
 }

@@ -44,8 +44,16 @@ export function getCloudflareContext(): CloudflareContext {
 }
 
 export function runWithCloudflareContext<T>(context: CloudflareContext, fn: () => T): T {
-  if ((globalThis as any).process?.env?.DEBUG_BUNCF) {
-    console.log(`[buncf:context] run() starting with env keys: ${Object.keys(context.env as object).join(",")}`);
+  const storage = getAsyncLocalStorage();
+  if (!storage) {
+    if ((globalThis as any).process?.env?.DEBUG_BUNCF) {
+      console.warn("[buncf:context] AsyncLocalStorage not available, running function without context isolation.");
+    }
+    return fn();
   }
-  return getAsyncLocalStorage().run(context, fn);
+
+  if ((globalThis as any).process?.env?.DEBUG_BUNCF) {
+    console.log(`[buncf:context] run() starting with env keys: ${Object.keys(context.env).join(",")}`);
+  }
+  return storage.run(context, fn);
 }

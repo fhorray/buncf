@@ -38,17 +38,23 @@ const useCallback = mock((fn: any) => fn);
 // Mock LoaderClient
 mock.module("../src/router/loader-client", () => ({
   loaderClient: {
-    invalidateAll: mock(() => { })
+    invalidateAll: mock(() => { }),
+    subscribe: mock(() => () => { }) // Return un-subscribe no-op
   }
 }));
 
 // Mock React
+import * as realReact from "react";
 mock.module("react", () => ({
+  ...realReact,
   useState,
   useEffect,
   useCallback,
   default: {
-    createElement: mock(() => ({})),
+    ...(realReact as any).default,
+    useState,
+    useEffect,
+    useCallback,
   }
 }));
 

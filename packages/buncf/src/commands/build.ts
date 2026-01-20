@@ -5,8 +5,9 @@ import * as path from "path";
 import { bunToCloudflare } from "../plugin";
 // @ts-ignore
 import { log } from "../utils/log";
-import { serverActionsClientPlugin, serverActionsWorkerPlugin, deduplicateReactPlugin, ignoreCssPlugin } from "../plugins/server-actions";
+import { serverActionsClientPlugin, serverActionsWorkerPlugin, deduplicateReactPlugin } from "../plugins/server-actions";
 import { generateCloudflareTypes } from "../utils/typegen";
+import { loadConfig } from "../utils/config";
 
 // Start extracted from cli.ts
 
@@ -130,6 +131,19 @@ export const build = async (entrypoint: string) => {
   // 0. Auto Generate Cloudflare Types
   await generateCloudflareTypes();
 
+  // Load User Config
+  const config = await loadConfig();
+  const userPlugins = config.plugins || [];
+
+  // Initialize Buncf Plugins
+  // @ts-ignore
+  const { initializePlugins } = await import("../plugin-registry");
+  const buncfPluginsConfig = config.buncfPlugins || [];
+  const pluginRegistry = await initializePlugins(buncfPluginsConfig);
+  const pluginBuildPlugins = pluginRegistry.buildPlugins || [];
+
+  const combinedClientPlugins = [deduplicateReactPlugin, serverActionsClientPlugin, ...userPlugins, ...pluginBuildPlugins];
+
   const buildStats = {
     routes: { static: 0, dynamic: 0, total: 0 },
     assets: 0,
@@ -137,6 +151,24 @@ export const build = async (entrypoint: string) => {
     clientSize: 0,
     duration: 0
   };
+
+  // Copy Plugin Assets
+  if (pluginRegistry.assets) {
+    if (!fs.existsSync("./.buncf/cloudflare/assets")) fs.mkdirSync("./.buncf/cloudflare/assets", { recursive: true });
+    for (const [virtualPath, sourcePath] of Object.entries(pluginRegistry.assets)) {
+      try {
+        const destName = virtualPath.startsWith("/") ? virtualPath.slice(1) : virtualPath;
+        const destPath = path.resolve("./.buncf/cloudflare/assets", destName);
+        const destDir = path.dirname(destPath);
+        if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+
+        await Bun.write(destPath, Bun.file(sourcePath));
+        buildStats.assets++;
+      } catch (e) {
+        console.error(`Failed to copy plugin asset ${virtualPath}:`, e);
+      }
+    }
+  }
 
   // Copy public folder to assets (Next.js-like behavior)
   const publicFolders = ["./src/public", "./public"];
@@ -206,7 +238,7 @@ export const build = async (entrypoint: string) => {
     try { return fs.existsSync(path); } catch (e) { return false; }
   });
 
-  const plugins = [deduplicateReactPlugin, ignoreCssPlugin, serverActionsClientPlugin];
+  const plugins = [deduplicateReactPlugin, serverActionsClientPlugin];
 
   // CSS Build (globals.css, index.css)
   const cssEntries = ["./src/globals.css", "./src/index.css", "./globals.css", "./index.css"];
@@ -218,7 +250,7 @@ export const build = async (entrypoint: string) => {
           entrypoints: [cssFile],
           outdir: "./.buncf/cloudflare/assets",
           target: "browser", // allows css output
-          plugins: plugins,
+          plugins: combinedClientPlugins,
           naming: "[name].[ext]",
           minify: true,
         });
@@ -266,7 +298,7 @@ export const build = async (entrypoint: string) => {
           "process.env": JSON.stringify(publicEnv),
           "process.browser": "true"
         },
-        plugins: plugins,
+        plugins: combinedClientPlugins,
         naming: {
           entry: "[name].[ext]",
           chunk: "[name]-[hash].[ext]",
@@ -296,7 +328,7 @@ export const build = async (entrypoint: string) => {
       minify: true,
       splitting: false, // Keep worker as single file for Cloudflare compatibility
       drop: ["console", "debugger"], // Prune logs from production worker
-      plugins: [bunToCloudflare(entrypoint), ignoreCssPlugin, serverActionsWorkerPlugin],
+      plugins: [bunToCloudflare(entrypoint), serverActionsWorkerPlugin, ...userPlugins, ...pluginBuildPlugins],
       define: {
         "process.env.NODE_ENV": JSON.stringify("production"),
         "process.env": "globalThis.process.env",

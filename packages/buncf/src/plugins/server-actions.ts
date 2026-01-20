@@ -21,15 +21,6 @@ export const deduplicateReactPlugin = {
   }
 };
 
-/**
- * Plugin to strip CSS imports from JS bundles
- */
-export const ignoreCssPlugin = {
-  name: "ignore-css",
-  setup(build: any) {
-    build.onLoad({ filter: /\.css$/ }, () => ({ contents: "", loader: "js" }));
-  }
-};
 
 /**
  * Plugin to transform *.action.ts files for the Browser

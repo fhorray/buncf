@@ -136,5 +136,96 @@ export interface MetaTag {
 export type MetaFunction<data = any> = (args: MetaArgs<data>) => MetaTag[] | MetaTag;
 
 
+// --- BUNCF PLUGIN TYPES ---
 
+import type { BunPlugin } from "bun";
+
+/**
+ * Context passed to plugin route handlers.
+ */
+export interface BuncfPluginContext {
+  /** The Cloudflare environment bindings */
+  env: CloudflareEnv;
+  /** The Cloudflare execution context */
+  ctx: ExecutionContext;
+  /** The original request */
+  request: Request;
+}
+
+/**
+ * Result of plugin setup function.
+ */
+export interface BuncfPluginSetupResult {
+  /**
+   * A fetch handler for plugin routes.
+   * All routes are mounted under the plugin's `basePath`.
+   */
+  routes?: (req: Request, ctx: BuncfPluginContext) => Response | Promise<Response>;
+
+  /**
+   * Middleware to apply globally or to specific patterns.
+   */
+  middleware?: MiddlewareConfig[];
+
+  /**
+   * Bun plugins to add to the build process (for CSS, etc.)
+   */
+  buildPlugins?: BunPlugin[];
+
+  /**
+   * Static assets to copy to the output directory.
+   * Map of { "virtual path": "absolute source path" }
+   */
+  assets?: Record<string, string>;
+
+  /**
+   * Pages to inject into the client-side router.
+   * Map of { "route": () => import("./MyPage") }
+   */
+  pages?: Record<string, () => Promise<{ default: React.ComponentType }>>;
+}
+
+/**
+ * A Buncf Plugin definition.
+ * 
+ * Plugins can inject routes, middleware, assets, and pages into a buncf application.
+ * 
+ * @template TOptions - The type of options the plugin accepts
+ */
+export interface BuncfPlugin<TOptions = unknown> {
+  /** Unique identifier for the plugin */
+  name: string;
+
+  /** Base path for all plugin routes (e.g., "/admin") */
+  basePath?: string;
+
+  /**
+   * Function to initialize the plugin.
+   * Called once during the build/dev process.
+   */
+  setup: (options: TOptions) => BuncfPluginSetupResult | Promise<BuncfPluginSetupResult>;
+}
+
+/**
+ * Helper function to define a type-safe Buncf Plugin.
+ */
+export function definePlugin<TOptions = void>(
+  plugin: BuncfPlugin<TOptions>
+): (options: TOptions) => BuncfPlugin<TOptions> {
+  return (options: TOptions) => ({
+    ...plugin,
+    setup: () => plugin.setup(options),
+  });
+}
+
+/**
+ * Configuration object for buncf.config.ts
+ */
+export interface BuncfConfig {
+  /** Bun build plugins (e.g., bun-plugin-tailwind) */
+  plugins?: BunPlugin[];
+
+  /** High-level Buncf plugins (for routes, pages, middleware) */
+  buncfPlugins?: BuncfPlugin<any>[];
+}
 

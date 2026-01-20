@@ -5,6 +5,9 @@ export { getCloudflareContext, runWithCloudflareContext } from './context';
 export { initBuncfDev } from './dev';
 export { createWorkerHandler } from './worker-factory';
 
+// Plugin System
+export { initializePlugins, type PluginRegistryResult } from './plugin-registry';
+
 // Re-export server-side router (createApp)
 // For hooks/Link, use: import { useRouter } from "buncf/router"
 export { createApp, createApiRouter, createPagesRouter } from "./router";
