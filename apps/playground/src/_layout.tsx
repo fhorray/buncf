@@ -3,6 +3,7 @@
  * Wraps all pages
  */
 import { Link, usePathname } from 'buncf/router';
+import "./globals.css";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
