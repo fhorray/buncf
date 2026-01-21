@@ -71,21 +71,21 @@ export async function initBuncfDev(options?: {
                   config.d1_databases = parseTomlArray("d1_databases");
                   config.r2_buckets = parseTomlArray("r2_buckets");
 
-              // Parse Workflows
-              // [[workflows]]
-              // name = "workflow-name"
-              // binding = "MY_WORKFLOW"
-              // class_name = "MyWorkflow"
-              const parseWorkflows = () => {
-                 const regex = /\[\[workflows\]\][\s\S]*?binding\s*=\s*"([^"]+)"[\s\S]*?class_name\s*=\s*"([^"]+)"/g;
-                 const matches = [];
-                 let match;
-                 while ((match = regex.exec(content)) !== null) {
-                     matches.push({ binding: match[1], class_name: match[2] });
-                 }
-                 return matches;
-              };
-              config.workflows = parseWorkflows();
+                  // Parse Workflows
+                  // [[workflows]]
+                  // name = "workflow-name"
+                  // binding = "MY_WORKFLOW"
+                  // class_name = "MyWorkflow"
+                  const parseWorkflows = () => {
+                    const regex = /\[\[workflows\]\][\s\S]*?binding\s*=\s*"([^"]+)"[\s\S]*?class_name\s*=\s*"([^"]+)"/g;
+                    const matches = [];
+                    let match;
+                    while ((match = regex.exec(content)) !== null) {
+                      matches.push({ binding: match[1], class_name: match[2] });
+                    }
+                    return matches;
+                  };
+                  config.workflows = parseWorkflows();
                 } else {
                   config = (Bun as any).JSONC ? (Bun as any).JSONC.parse(content) : JSON.parse(content);
                 }
@@ -168,69 +168,85 @@ export async function initBuncfDev(options?: {
       // Initialize Workflows System
       let workflowDb: WorkflowDatabase | undefined;
       try {
-          workflowDb = new WorkflowDatabase();
-          console.log("[Buncf Dev] Initialized Workflow Database.");
+        workflowDb = new WorkflowDatabase();
+        console.log("[Buncf Dev] Initialized Workflow Database.");
 
-          // Inject Workflow Bindings
-          // We need to re-read config to find workflow bindings since Miniflare might not return them if it doesn't support them natively yet
-          // or if we want to override them with our native implementation.
+        // Inject Workflow Bindings
+        // We need to re-read config to find workflow bindings since Miniflare might not return them if it doesn't support them natively yet
+        // or if we want to override them with our native implementation.
 
-          let workflowsConfig: { binding: string, class_name: string }[] = [];
+        let workflowsConfig: { binding: string, class_name: string }[] = [];
 
-          // Re-parse config if we can find it (copy-paste logic from above or just rely on what we parsed?)
-          // The `config` variable above was local to the scope block.
-          // Let's re-read simply.
-          const configCandidates = ["wrangler.toml", "wrangler.json"];
-          for (const c of configCandidates) {
-             const cp = path.resolve(process.cwd(), c);
-             if (await Bun.file(cp).exists()) {
-                 const content = await Bun.file(cp).text();
-                 if (c.endsWith(".toml")) {
-                     const regex = /\[\[workflows\]\][\s\S]*?binding\s*=\s*"([^"]+)"[\s\S]*?class_name\s*=\s*"([^"]+)"/g;
-                     let match;
-                     while ((match = regex.exec(content)) !== null) {
-                         workflowsConfig.push({ binding: match[1], class_name: match[2] });
-                     }
-                 }
-                 break;
-             }
+        // Re-parse config if we can find it
+        const configCandidates = ["wrangler.jsonc", "wrangler.json", "wrangler.toml"];
+        for (const c of configCandidates) {
+          const cp = path.resolve(process.cwd(), c);
+          if (await Bun.file(cp).exists()) {
+            const content = await Bun.file(cp).text();
+            if (c.endsWith(".toml")) {
+              const regex = /\[\[workflows\]\][\s\S]*?binding\s*=\s*"([^"]+)"[\s\S]*?class_name\s*=\s*"([^"]+)"/g;
+              let match;
+              while ((match = regex.exec(content)) !== null) {
+                workflowsConfig.push({ binding: match[1] as string, class_name: match[2] as string });
+              }
+            } else {
+              // Parse JSON/JSONC
+              try {
+                const config = (Bun as any).JSONC ? (Bun as any).JSONC.parse(content) : JSON.parse(content);
+                if (config.workflows && Array.isArray(config.workflows)) {
+                  for (const wf of config.workflows) {
+                    if (wf.binding && wf.class_name) {
+                      workflowsConfig.push({ binding: wf.binding, class_name: wf.class_name });
+                    }
+                  }
+                }
+              } catch (e) {
+                console.warn("[Buncf Dev] Failed to parse workflow config from JSON:", e);
+              }
+            }
+            break;
+          }
+        }
+
+        if (workflowsConfig.length > 0) {
+          // Try to load user entrypoint to find classes
+          // Use the compiled dev.js which has cloudflare:workers resolved
+          const entrypoints = [".buncf/dev.js", "src/index.ts", "src/index.tsx", "src/worker.ts"];
+          let userModule: any = null;
+
+          for (const ep of entrypoints) {
+            const p = path.resolve(process.cwd(), ep);
+            if (await Bun.file(p).exists()) {
+              try {
+                userModule = await import(p);
+                console.log(`[Buncf Dev] Loaded workflow classes from ${ep}`);
+                break;
+              } catch (e) {
+                // Only warn for non-.buncf paths
+                if (!ep.startsWith(".buncf")) {
+                  console.warn(`[Buncf Dev] Failed to load entrypoint ${ep} for workflows:`, e);
+                }
+              }
+            }
           }
 
-          if (workflowsConfig.length > 0) {
-              // Try to load user entrypoint to find classes
-              // Assuming src/index.ts or defined main
-              const entrypoints = ["src/index.ts", "src/index.tsx", "src/worker.ts"];
-              let userModule: any = null;
-
-              for (const ep of entrypoints) {
-                  const p = path.resolve(process.cwd(), ep);
-                  if (await Bun.file(p).exists()) {
-                      try {
-                          userModule = await import(p);
-                          break;
-                      } catch (e) {
-                          console.warn(`[Buncf Dev] Failed to load entrypoint ${ep} for workflows:`, e);
-                      }
-                  }
-              }
-
-              if (userModule) {
-                  for (const wf of workflowsConfig) {
-                      const WorkflowClass = userModule[wf.class_name];
-                      if (WorkflowClass) {
-                          console.log(`[Buncf Dev] Binding Workflow '${wf.binding}' to class '${wf.class_name}'`);
-                          env[wf.binding] = new WorkflowBinding(workflowDb, WorkflowClass, env);
-                      } else {
-                          console.warn(`[Buncf Dev] Workflow class '${wf.class_name}' not found in entrypoint exports.`);
-                      }
-                  }
+          if (userModule) {
+            for (const wf of workflowsConfig) {
+              const WorkflowClass = userModule[wf.class_name];
+              if (WorkflowClass) {
+                console.log(`[Buncf Dev] Binding Workflow '${wf.binding}' to class '${wf.class_name}'`);
+                env[wf.binding] = new WorkflowBinding(workflowDb, WorkflowClass, env);
               } else {
-                  console.warn("[Buncf Dev] Could not load user entrypoint to resolve Workflow classes.");
+                console.warn(`[Buncf Dev] Workflow class '${wf.class_name}' not found in entrypoint exports.`);
               }
+            }
+          } else {
+            console.warn("[Buncf Dev] Could not load user entrypoint to resolve Workflow classes.");
           }
+        }
 
       } catch (e: any) {
-          console.error("[Buncf Dev] Failed to initialize Workflow Database or Bindings:", e);
+        console.error("[Buncf Dev] Failed to initialize Workflow Database or Bindings:", e);
       }
 
       // 3. Polyfill ASSETS if missing or misconfigured (for local dev)
@@ -239,23 +255,29 @@ export async function initBuncfDev(options?: {
         env.ASSETS = {
           fetch: async (req: Request) => {
             const url = new URL(req.url);
+            // console.log(`[Buncf Dev] ASSETS.fetch: ${url.pathname}`);
 
-            // Intercept Workflow API and UI requests
-            if (url.pathname.startsWith("/_buncf/workflows")) {
+            try {
+              // Intercept Workflow API and UI requests
+              if (url.pathname.startsWith("/_buncf/workflows")) {
                 if (url.pathname.startsWith("/_buncf/workflows/api") && workflowDb) {
-                     // Need to await because handleWorkflowApi might consume body (async)
-                     const apiResponse = await handleWorkflowApi(req, workflowDb);
-                     if (apiResponse) return apiResponse;
+                  const apiResponse = await handleWorkflowApi(req, workflowDb);
+                  if (apiResponse) return apiResponse;
                 }
 
-                // Serve Dashboard (TODO: Implementing in next step)
+                // Serve Dashboard
                 if (url.pathname === "/_buncf/workflows" || url.pathname === "/_buncf/workflows/") {
-                    // We'll import the render logic dynamically or assume it's set up
-                    // For now, simple placeholder
-                    // return new Response("Workflow Dashboard Placeholder", { headers: {"Content-Type": "text/html"}});
+                  try {
                     const { renderDashboard } = await import("./workflows/ui/index");
-                    return new Response(renderDashboard(), { headers: {"Content-Type": "text/html"}});
+                    return new Response(renderDashboard(), { headers: { "Content-Type": "text/html" } });
+                  } catch (e: any) {
+                    console.error("[Buncf Dev] Failed to render dashboard:", e.message);
+                    return new Response("Error rendering dashboard: " + e.message, { status: 500 });
+                  }
                 }
+              }
+            } catch (e: any) {
+              console.error("[Buncf Dev] ASSETS.fetch intercept error:", e.message);
             }
 
             const assetsRoot = path.join(process.cwd(), ".buncf/cloudflare/assets");

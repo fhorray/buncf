@@ -15,6 +15,13 @@
     "directory": ".buncf/cloudflare/assets",
     "binding": "ASSETS"
   },
+  "workflows": [
+    {
+      "name": "user-signup",
+      "binding": "MY_WORKFLOW",
+      "class_name": "UserSignupWorkflow"
+    }
+  ],
   "kv_namespaces": [
     {
       "binding": "MY_KV",

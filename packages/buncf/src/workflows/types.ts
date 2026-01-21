@@ -37,11 +37,10 @@ export interface WorkflowStepConfig {
 }
 
 export interface WorkflowStep {
-  do: <T>(name: string, config: WorkflowStepConfig | undefined | null, callback: () => Promise<T> | T) => Promise<T>;
-  // overload for when config is omitted
-  do: <T>(name: string, callback: () => Promise<T> | T) => Promise<T>;
-  sleep: (name: string, duration: number | string) => Promise<void>;
-  waitForEvent: <T = unknown>(name: string, config?: { timeout?: number | string }) => Promise<T>;
+  do<T>(name: string, config: WorkflowStepConfig | undefined | null, callback: () => Promise<T> | T): Promise<T>;
+  do<T>(name: string, callback: () => Promise<T> | T): Promise<T>;
+  sleep(name: string, duration: number | string): Promise<void>;
+  waitForEvent<T = unknown>(name: string, config?: { timeout?: number | string }): Promise<T>;
 }
 
 export interface WorkflowEvent<T = unknown> {

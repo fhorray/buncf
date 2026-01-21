@@ -10,3 +10,7 @@ export default createApp({
         })
     ]
 });
+
+
+// Export workflows
+export { UserSignupWorkflow } from './workflows';

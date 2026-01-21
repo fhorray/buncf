@@ -78,8 +78,8 @@ async function globalServeAsset(req: Request, assetPrefix: string = "assets"): P
     }
 
     // 3. SPA Fallback (if still 404, generic, and looks like a page route)
-    // Only applies if we haven't found a file yet AND it's not a data request
-    if (res.status === 404 && !assetPath.startsWith("/api")) {
+    // Only applies if we haven't found a file yet AND it's not a data request or framework route
+    if (res.status === 404 && !assetPath.startsWith("/api") && !assetPath.startsWith("/_buncf/")) {
       const rootIndexRes = await fetchAsset("/index.html");
       if (rootIndexRes.status !== 404) res = rootIndexRes;
     }
@@ -204,6 +204,10 @@ function createFetchFromRoutes(
         if (res) return res;
       }
     }
+
+    // Default: try assets as a final fallback
+    const assetResponse = await globalServeAsset(req, options.assetPrefix);
+    if (assetResponse) return assetResponse;
 
     // Default 404
     return new Response("Not Found", { status: 404 });

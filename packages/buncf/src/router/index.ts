@@ -422,7 +422,7 @@ export const ${name} = async (input) => {
       pageMatch = pagesRouter.match(req);
     }
 
-    if (indexHtmlContent && !url.pathname.includes(".")) {
+    if (indexHtmlContent && !url.pathname.includes(".") && !url.pathname.startsWith("/_buncf/")) {
       const allRoutes = pagesRouter ? pagesRouter.getRoutes() : [];
       const routeData = JSON.stringify({
         pathname: pageMatch ? pageMatch.pathname : url.pathname,
@@ -443,6 +443,19 @@ export const ${name} = async (input) => {
       return new Response(htmlWithRoute, {
         headers: { "Content-Type": "text/html" },
       });
+    }
+
+    // 5. Try ASSETS binding as final fallback (for dev-only routes like /_buncf/*)
+    const cfContext = getCloudflareContext();
+    if (cfContext?.env?.ASSETS) {
+      try {
+        const assetRes = await cfContext.env.ASSETS.fetch(req);
+        if (assetRes.status !== 404) {
+          return assetRes;
+        }
+      } catch (e) {
+        // Ignore errors, fall through to 404
+      }
     }
 
     return new Response("Not Found", { status: 404 });

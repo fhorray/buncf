@@ -31,10 +31,10 @@ export const bunToCloudflare = (entrypointPath?: string, buildConfig?: any): Bun
     const absoluteEntryPath = entrypointPath ? path.resolve(process.cwd(), entrypointPath) : null;
 
     // 1. Mock Workflows Module (for User Code)
-    build.onResolve({ filter: /^cloudflare:workflows$/ }, async (args) => {
-        return {
-            path: path.resolve(import.meta.dir, "workflows/module.ts"),
-        };
+    build.onResolve({ filter: /^cloudflare:(workflows|workers)$/ }, async (args) => {
+      return {
+        path: path.resolve(import.meta.dir, "workflows/module.ts"),
+      };
     });
 
     // 2. Mock Dev Module
