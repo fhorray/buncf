@@ -91,9 +91,19 @@ export async function initBuncfDev(options?: {
                 }
 
                 if (config.kv_namespaces) bindingsOptions.kvNamespaces = config.kv_namespaces.map((k: any) => k.binding);
-                if (config.d1_databases) bindingsOptions.d1Databases = config.d1_databases.map((d: any) => d.binding || d.binding_name);
+                if (config.d1_databases) {
+                  const d1Databases: Record<string, string> = {};
+                  for (const d of config.d1_databases) {
+                    const binding = d.binding || d.binding_name;
+                    if (binding) {
+                      d1Databases[binding] = d.database_id || binding;
+                    }
+                  }
+                  bindingsOptions.d1Databases = d1Databases;
+                }
                 if (config.r2_buckets) bindingsOptions.r2Buckets = config.r2_buckets.map((b: any) => b.binding);
                 if (config.vars) bindingsOptions.bindings = config.vars;
+                console.log("[Buncf Dev] bindingsOptions:", JSON.stringify(bindingsOptions, null, 2));
               } catch (e) {
                 console.warn("[Buncf Dev] Manual config parse failed:", (e as any).message);
               }
