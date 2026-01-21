@@ -29,7 +29,19 @@ if (flags.help && !command) {
 }
 
 // Entrypoint Finder Helper
-const getEntrypoint = () => {
+const getEntrypoint = (command: string) => {
+  // Check if an entrypoint was provided as an argument after the command
+  const commandIndex = args.indexOf(command);
+  const providedEntrypoint = args[commandIndex + 1];
+
+  if (providedEntrypoint && !providedEntrypoint.startsWith("-")) {
+    if (Bun.file(providedEntrypoint).size > 0) {
+      return providedEntrypoint;
+    }
+    log.error(`Specified entrypoint not found: ${providedEntrypoint}`);
+    process.exit(1);
+  }
+
   const entrypoints = ["./src/index.ts", "./index.ts", "./src/index.js", "./index.js"];
   const entrypoint = entrypoints.find(path => Bun.file(path).size > 0);
   if (!entrypoint) {
@@ -66,7 +78,7 @@ async function main() {
     }
     case "build": {
       const { build } = await import("./commands/build");
-      const entrypoint = getEntrypoint();
+      const entrypoint = getEntrypoint("build");
       log.title(`🚀 Building for Production...`);
       const success = await build(entrypoint);
       if (!success) process.exit(1);
@@ -74,13 +86,13 @@ async function main() {
     }
     case "deploy": {
       const { deploy } = await import("./commands/deploy");
-      const entrypoint = getEntrypoint();
+      const entrypoint = getEntrypoint("deploy");
       await deploy(entrypoint);
       break;
     }
     case "dev": {
       const { dev } = await import("./commands/dev");
-      const entrypoint = getEntrypoint();
+      const entrypoint = getEntrypoint("dev");
       // Start dev loop
       await dev(entrypoint, { verbose: flags.verbose, remote: flags.remote });
       // dev command keeps process alive

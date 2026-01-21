@@ -25,15 +25,22 @@ ${code}
   throw new Error("Buncf runtime file not found");
 }
 
-export const bunToCloudflare = (entrypointPath?: string, buildConfig?: any): BunPlugin => ({
+export const bunToCloudflare = (entrypointPath?: string, buildConfig?: any, options?: { isDev?: boolean }): BunPlugin => ({
   name: "bun-to-cloudflare",
   setup(build) {
-    const absoluteEntryPath = entrypointPath ? path.resolve(process.cwd(), entrypointPath) : null;
+    const isDev = options?.isDev !== false; // Default to true for backward compatibility
+    const absoluteEntryPath = entrypointPath ? path.resolve(process.cwd(), entrypointPath).replace(/\\/g, "/") : null;
 
-    // 1. Mock Workflows Module (for User Code)
+    // 1. Mock/Externalize Cloudflare Modules
     build.onResolve({ filter: /^cloudflare:(workflows|workers)$/ }, async (args) => {
+      if (isDev) {
+        return {
+          path: path.resolve(import.meta.dir, "workflows/module.ts"),
+        };
+      }
       return {
-        path: path.resolve(import.meta.dir, "workflows/module.ts"),
+        path: args.path,
+        external: true,
       };
     });
 
@@ -54,13 +61,12 @@ export const bunToCloudflare = (entrypointPath?: string, buildConfig?: any): Bun
 
     // 3. Wrap User Entry Point
     build.onLoad({ filter: /\.(ts|js|tsx|jsx)$/ }, async (args) => {
-      const normalizedPath = path.resolve(args.path);
-      const isEntry = absoluteEntryPath &&
-        (process.platform === 'win32'
-          ? absoluteEntryPath.toLowerCase() === normalizedPath.toLowerCase()
-          : absoluteEntryPath === normalizedPath);
+      const normalizedPath = path.resolve(args.path).replace(/\\/g, "/").toLowerCase();
+      const isEntry = absoluteEntryPath && absoluteEntryPath.toLowerCase() === normalizedPath;
 
       if (!isEntry) return undefined;
+
+      console.log(`[buncf] Wrapping entrypoint: ${args.path}`);
 
       const [runtimeCode, originalCode] = await Promise.all([
         getRuntimeCode(),

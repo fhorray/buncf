@@ -14,12 +14,11 @@
     "esModuleInterop": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"],
-      "buncf": ["./node_modules/buncf/src/index.ts"],
-      "buncf/router": ["./node_modules/buncf/src/router/react.ts"],
+      "@/*": ["./*"],
       "$api": ["./.buncf/api-client.ts"],
       "$routes": ["./.buncf/routes.ts"]
     }
   },
-  "include": ["src/**/*", "*.d.ts", ".buncf/routes.ts"]
+"types": ["./.buncf/cloudflare-env.d.ts", "./buncf-env.d.ts"],
+"include": ["src/**/*", "*.d.ts", ".buncf/routes.ts", ".buncf/cloudflare-env.d.ts"]
 }

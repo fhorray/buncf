@@ -17,14 +17,12 @@ export async function init(projectName: string, options: InitOptions = {}) {
 
   // Resolve templates directory
   // Assuming compiled structure or source structure:
-  // src/commands/init/index.ts -> ../../../templates
-  const templatesDir = path.resolve(import.meta.dir, "../../../templates");
+  // src/commands/init/index.ts -> ../../templates
+  const templatesDir = path.resolve(import.meta.dir, "../../templates");
 
   if (!fs.existsSync(templatesDir)) {
-      // Fallback for development if structure is different
-      log.warn(`Templates directory not found at ${templatesDir}. Using hardcoded fallback.`);
-      // In a real scenario, this should fail, but for now we might still have logic
-      // But we are moving to files, so this is critical.
+    log.error(`Templates directory not found at ${templatesDir}. Check your installation.`);
+    process.exit(1);
   }
 
   if (fs.existsSync(projectDir)) {
@@ -38,33 +36,33 @@ export async function init(projectName: string, options: InitOptions = {}) {
   let isStarter = false;
 
   if (options.template) {
-     log.info(`Using template: ${options.template}`);
-     // Map template names to features
-     // Currently we only have features, so let's say "full" includes everything
-     if (options.template === "full") {
-         choices = ["tailwind", "shadcn", "auth", "drizzle"];
-     } else if (options.template === "base") {
-         choices = [];
-     } else {
-         const starterPath = path.join(templatesDir, "starters", options.template);
-         // console.log("DEBUG: Checking starter path:", starterPath);
-         if (fs.existsSync(starterPath)) {
-            isStarter = true;
-         } else {
-            log.error(`Unknown template '${options.template}'.`);
-            log.info(`Available templates: base, full, minimal`);
-            process.exit(1);
-         }
-     }
+    log.info(`Using template: ${options.template}`);
+    // Map template names to features
+    // Currently we only have features, so let's say "full" includes everything
+    if (options.template === "full") {
+      choices = ["tailwind", "shadcn", "auth", "drizzle"];
+    } else if (options.template === "base") {
+      choices = [];
+    } else {
+      const starterPath = path.join(templatesDir, "starters", options.template);
+      // console.log("DEBUG: Checking starter path:", starterPath);
+      if (fs.existsSync(starterPath)) {
+        isStarter = true;
+      } else {
+        log.error(`Unknown template '${options.template}'.`);
+        log.info(`Available templates: base, full, minimal`);
+        process.exit(1);
+      }
+    }
   }
 
   if ((!options.template && !isStarter) || (choices.length === 0 && options.template !== "base" && !isStarter)) {
-      choices = await multiSelect("Which stack would you like to build with?", [
-        { name: "Tailwind CSS", value: "tailwind", description: "Modern styling with Tailwind 4" },
-        { name: "Shadcn UI", value: "shadcn", description: "Essential UI components (Button, Input, Card, ...)" },
-        { name: "Better Auth", value: "auth", description: "Authentication for Cloudflare D1" },
-        { name: "Drizzle ORM", value: "drizzle", description: "Type-safe DB for Cloudflare D1" }
-      ]);
+    choices = await multiSelect("Which stack would you like to build with?", [
+      { name: "Tailwind CSS", value: "tailwind", description: "Modern styling with Tailwind 4" },
+      { name: "Shadcn UI", value: "shadcn", description: "Essential UI components (Button, Input, Card, ...)" },
+      { name: "Better Auth", value: "auth", description: "Authentication for Cloudflare D1" },
+      { name: "Drizzle ORM", value: "drizzle", description: "Type-safe DB for Cloudflare D1" }
+    ]);
   }
 
   const useTailwind = choices.includes("tailwind") || choices.includes("shadcn");
@@ -78,34 +76,34 @@ export async function init(projectName: string, options: InitOptions = {}) {
 
   // Helper to copy directory
   const copyDir = (src: string, dest: string) => {
-      if (!fs.existsSync(src)) return;
-      const entries = fs.readdirSync(src, { withFileTypes: true });
-      for (const entry of entries) {
-          const srcPath = path.join(src, entry.name);
-          let destName = entry.name;
-          // NPM renaming safety
-          if (destName === "_gitignore") destName = ".gitignore";
+    if (!fs.existsSync(src)) return;
+    const entries = fs.readdirSync(src, { withFileTypes: true });
+    for (const entry of entries) {
+      const srcPath = path.join(src, entry.name);
+      let destName = entry.name;
+      // NPM renaming safety
+      if (destName === "_gitignore") destName = ".gitignore";
 
-          const destPath = path.join(dest, destName);
-          if (entry.isDirectory()) {
-              if (!fs.existsSync(destPath)) fs.mkdirSync(destPath);
-              copyDir(srcPath, destPath);
-          } else {
-              // Check if file is likely binary or text for replacement safety
-              const ext = path.extname(entry.name);
-              const isText = [".ts", ".tsx", ".js", ".jsx", ".json", ".html", ".css", ".md", ".txt", ".svg", ""].includes(ext) || destName === ".gitignore";
+      const destPath = path.join(dest, destName);
+      if (entry.isDirectory()) {
+        if (!fs.existsSync(destPath)) fs.mkdirSync(destPath);
+        copyDir(srcPath, destPath);
+      } else {
+        // Check if file is likely binary or text for replacement safety
+        const ext = path.extname(entry.name);
+        const isText = [".ts", ".tsx", ".js", ".jsx", ".json", ".html", ".css", ".md", ".txt", ".svg", ""].includes(ext) || destName === ".gitignore";
 
-              if (isText) {
-                  // Read content as text and replace placeholders
-                  let content = fs.readFileSync(srcPath, "utf-8");
-                  content = content.replace(/{{PROJECT_NAME}}/g, projectName);
-                  fs.writeFileSync(destPath, content);
-              } else {
-                  // Binary copy
-                  fs.copyFileSync(srcPath, destPath);
-              }
-          }
+        if (isText) {
+          // Read content as text and replace placeholders
+          let content = fs.readFileSync(srcPath, "utf-8");
+          content = content.replace(/{{PROJECT_NAME}}/g, projectName);
+          fs.writeFileSync(destPath, content);
+        } else {
+          // Binary copy
+          fs.copyFileSync(srcPath, destPath);
+        }
       }
+    }
   };
 
   const write = createFileWriter(projectDir);
@@ -119,16 +117,16 @@ export async function init(projectName: string, options: InitOptions = {}) {
 
     // --- 2. Features ---
     if (useTailwind) {
-        copyDir(path.join(templatesDir, "features/tailwind"), projectDir);
+      copyDir(path.join(templatesDir, "features/tailwind"), projectDir);
     }
     if (useBetterAuth) {
-        copyDir(path.join(templatesDir, "features/auth"), projectDir);
+      copyDir(path.join(templatesDir, "features/auth"), projectDir);
     }
     if (useDrizzle) {
-        copyDir(path.join(templatesDir, "features/drizzle"), projectDir);
+      copyDir(path.join(templatesDir, "features/drizzle"), projectDir);
     }
     if (useShadcn) {
-        copyDir(path.join(templatesDir, "features/shadcn"), projectDir);
+      copyDir(path.join(templatesDir, "features/shadcn"), projectDir);
     }
 
     // --- 3. Dynamic Files (package.json, index.tsx, _layout.tsx) ---

@@ -251,7 +251,7 @@ export const build = async (entrypoint: string) => {
       minify: true,
       splitting: false, // Keep worker as single file for Cloudflare compatibility
       drop: ["console", "debugger"], // Prune logs from production worker
-      plugins: [bunToCloudflare(entrypoint, config), serverActionsWorkerPlugin, ...allBuildPlugins],
+      plugins: [bunToCloudflare(entrypoint, config, { isDev: false }), serverActionsWorkerPlugin, ...allBuildPlugins],
       define: {
         "process.env.NODE_ENV": JSON.stringify("production"),
         "process.env": "globalThis.process.env",
@@ -264,7 +264,7 @@ export const build = async (entrypoint: string) => {
         asset: "assets/[name]-[hash].[ext]",
       },
       // @ts-ignore
-      external: ["node:async_hooks", ...(clientEntry ? [clientEntry] : [])],
+      external: ["node:async_hooks", "cloudflare:workers", "cloudflare:workflows", ...(clientEntry ? [clientEntry] : [])],
     });
 
     if (result.success) {

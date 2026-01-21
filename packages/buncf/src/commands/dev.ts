@@ -324,7 +324,7 @@ console.log(
           "process.env.NODE_ENV": JSON.stringify("development"),
         },
         // @ts-ignore
-        plugins: [bunToCloudflare(entrypoint), serverActionsWorkerPlugin, ...(config.plugins || [])],
+        plugins: [bunToCloudflare(entrypoint, undefined, { isDev: true }), serverActionsWorkerPlugin, ...(config.plugins || [])],
         sourcemap: "inline",
         // @ts-ignore
         external: ["buncf", "buncf/dev"]
