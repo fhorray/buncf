@@ -8,9 +8,9 @@ import { log } from "../utils/log";
 import { serverActionsClientPlugin, serverActionsWorkerPlugin, deduplicateReactPlugin } from "../plugins/server-actions";
 import { autoCssPlugin } from "../plugins/css";
 import { generateCloudflareTypes } from "../utils/typegen";
-import { loadConfig } from "../utils/config";
 import { generateRoutesManifest } from "../utils/manifest";
 import { getPublicEnv } from "../utils/env";
+import { initializePlugins } from "../plugin-registry";
 
 function styleTag(route: string) {
   if (route.includes("[") || route.includes("*")) {
@@ -26,18 +26,56 @@ export const build = async (entrypoint: string) => {
   // 0. Auto Generate Cloudflare Types
   await generateCloudflareTypes();
 
-  // Load User Config
-  const config = await loadConfig();
+  // Load User Config from Entry Point (createApp)
+  let config: any = {};
+  try {
+    const cwd = process.cwd();
+    // Resolve entrypoint absolute path
+    const entryPath = path.resolve(cwd, entrypoint);
+
+    // We need to import the user's entrypoint to get the config.
+    // However, importing it might cause side effects (like connecting to DB) if not careful.
+    // Ideally, `createApp` should be pure.
+    // We assume the default export is the app handler created by `createApp`.
+
+    // In order to import it in the build script context (which might be different from runtime),
+    // we just dynamic import it.
+    // Note: If the user code relies on Cloudflare bindings (env.DB), this import might fail if they are accessed at top-level.
+    // But `createApp` pattern discourages top-level side effects.
+
+    // Also, we need to handle transpilation if it's TS. Bun does this automatically.
+
+    // Since we are inside the `buncf` package, we might need to handle `buncf` import resolution for the user file.
+    // But `bun run` usually handles node_modules resolution.
+
+    // HACK: To prevent executing "serve" logic if any, we just import.
+    const userModule = await import(entryPath + "?t=" + Date.now());
+    const appHandler = userModule.default;
+
+    if (appHandler && appHandler._config) {
+      config = appHandler._config;
+      log.success(`Loaded configuration from ${entrypoint}`);
+    } else {
+      log.warn(`No configuration found in ${entrypoint} default export. Using defaults.`);
+    }
+
+  } catch (e) {
+    log.warn(`Failed to load configuration from ${entrypoint}: ${e}`);
+    console.error(e);
+  }
+
   const userPlugins = config.plugins || [];
 
-  // Initialize Buncf Plugins
-  // @ts-ignore
-  const { initializePlugins } = await import("../plugin-registry");
-  const buncfPluginsConfig = config.buncfPlugins || [];
-  const pluginRegistry = await initializePlugins(buncfPluginsConfig);
-  const pluginBuildPlugins = pluginRegistry.buildPlugins || [];
+  // Initialize Buncf Plugins (to get build-time assets, etc.)
+  // We re-use the runtime logic but focused on build artifacts
+  const pluginRegistry = await initializePlugins(userPlugins);
 
-  const combinedClientPlugins = [deduplicateReactPlugin, serverActionsClientPlugin, autoCssPlugin, ...userPlugins, ...pluginBuildPlugins];
+  // Some plugins might have build-time setup (Bun plugins)
+  // Since `BuncfPlugin` extends `BunPlugin`, we pass them ALL to Bun.build.
+  // Bun will ignore properties it doesn't understand, but use `name` and `setup`.
+  const allBuildPlugins = [...userPlugins];
+
+  const combinedClientPlugins = [deduplicateReactPlugin, serverActionsClientPlugin, autoCssPlugin, ...allBuildPlugins];
 
   const buildStats = {
     routes: { static: 0, dynamic: 0, total: 0 },
@@ -213,7 +251,7 @@ export const build = async (entrypoint: string) => {
       minify: true,
       splitting: false, // Keep worker as single file for Cloudflare compatibility
       drop: ["console", "debugger"], // Prune logs from production worker
-      plugins: [bunToCloudflare(entrypoint), serverActionsWorkerPlugin, ...userPlugins, ...pluginBuildPlugins],
+      plugins: [bunToCloudflare(entrypoint, config), serverActionsWorkerPlugin, ...allBuildPlugins],
       define: {
         "process.env.NODE_ENV": JSON.stringify("production"),
         "process.env": "globalThis.process.env",

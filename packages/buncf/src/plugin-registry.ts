@@ -1,4 +1,4 @@
-import type { BuncfPlugin, BuncfPluginContext, BuncfPluginSetupResult, MiddlewareConfig } from "./types";
+import type { BuncfPlugin, BuncfPluginContext, MiddlewareConfig } from "./types";
 import type { BunPlugin } from "bun";
 
 /**
@@ -16,9 +16,6 @@ export interface PluginRegistryResult {
 
   /** Combined pages from all plugins */
   pages: Record<string, () => Promise<{ default: React.ComponentType }>>;
-
-  /** Combined Bun plugins for build process */
-  buildPlugins?: BunPlugin[];
 }
 
 /**
@@ -28,7 +25,7 @@ export interface PluginRegistryResult {
  * @returns Aggregated routes, middleware, assets, and pages
  */
 export async function initializePlugins(
-  plugins: BuncfPlugin<any>[]
+  plugins: BuncfPlugin[]
 ): Promise<PluginRegistryResult> {
   const result: PluginRegistryResult = {
     routeHandler: null,
@@ -48,41 +45,34 @@ export async function initializePlugins(
 
   for (const plugin of plugins) {
     try {
-      console.log(`[buncf] Initializing plugin: ${plugin.name}`);
-
-      const setupResult: BuncfPluginSetupResult = await plugin.setup({});
+      // console.log(`[buncf] Registering plugin: ${plugin.name}`);
 
       // Collect routes
-      if (setupResult.routes) {
+      if (plugin.routes) {
         const basePath = plugin.basePath || `/_plugins/${plugin.name}`;
         pluginHandlers.push({
           basePath: basePath.endsWith("/") ? basePath.slice(0, -1) : basePath,
-          handler: setupResult.routes,
+          handler: plugin.routes,
         });
       }
 
       // Collect middleware
-      if (setupResult.middleware) {
-        result.middleware.push(...setupResult.middleware);
+      if (plugin.middleware) {
+        result.middleware.push(...plugin.middleware);
       }
 
       // Collect assets
-      if (setupResult.assets) {
-        Object.assign(result.assets, setupResult.assets);
+      if (plugin.assets) {
+        Object.assign(result.assets, plugin.assets);
       }
 
       // Collect pages
-      if (setupResult.pages) {
-        Object.assign(result.pages, setupResult.pages);
+      if (plugin.pages) {
+        Object.assign(result.pages, plugin.pages);
       }
 
-      // Collect build plugins
-      if (setupResult.buildPlugins) {
-        result.buildPlugins = result.buildPlugins || [];
-        result.buildPlugins.push(...setupResult.buildPlugins);
-      }
     } catch (error) {
-      console.error(`[buncf] Failed to initialize plugin ${plugin.name}:`, error);
+      console.error(`[buncf] Failed to register plugin ${plugin.name}:`, error);
     }
   }
 
@@ -96,12 +86,18 @@ export async function initializePlugins(
         if (pathname.startsWith(basePath)) {
           // Rewrite the URL to remove the base path for the plugin handler
           const newUrl = new URL(req.url);
-          newUrl.pathname = pathname.slice(basePath.length) || "/";
+          // Special case: if base path is "/admin" and path is "/admin", rewrite to "/"
+          if (pathname === basePath) {
+             newUrl.pathname = "/";
+          } else {
+             newUrl.pathname = pathname.slice(basePath.length) || "/";
+          }
+
           const rewrittenRequest = new Request(newUrl.toString(), req);
 
           try {
             const response = await handler(rewrittenRequest, ctx);
-            if (response.status !== 404) {
+            if (response && response.status !== 404) {
               return response;
             }
           } catch (error) {
