@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
+import { scanLayouts } from "./scan-layouts";
 // @ts-ignore
 import { log } from "./log";
 
@@ -68,26 +69,13 @@ export async function generateRoutesManifest() {
         }
       }
 
-      const scanLayouts = async (dir: string, baseRoute: string) => {
-        const files = await fs.promises.readdir(dir);
-        await Promise.all(files.map(async (file) => {
-          const fullPath = path.join(dir, file);
-          const stat = await fs.promises.stat(fullPath);
-          if (stat.isDirectory()) {
-            await scanLayouts(fullPath, `${baseRoute}/${file}`);
-          } else if (file.match(/^_layout\.(tsx|jsx|ts|js)$/)) {
-            let routeKey = baseRoute === "" ? "/" : baseRoute;
-            if (!routeKey.startsWith("/")) routeKey = "/" + routeKey;
-
-            const relPath = path.relative(path.resolve(".buncf"), fullPath).split(path.sep).join(path.posix.sep);
-            const importPath = relPath.startsWith(".") ? relPath : `./${relPath}`;
-            layoutEntries.push(`  "${routeKey}": () => import("${importPath}")`);
-            stats.layouts++;
-          }
-        }));
-      };
-      await scanLayouts(pagesDir, "");
-      layoutEntries.sort();
+      const layouts = await scanLayouts(pagesDir);
+      for (const layout of layouts) {
+        const relPath = path.relative(path.resolve(".buncf"), layout.filepath).split(path.sep).join(path.posix.sep);
+        const importPath = relPath.startsWith(".") ? relPath : `./${relPath}`;
+        layoutEntries.push(`  "${layout.route}": () => import("${importPath}")`);
+        stats.layouts++;
+      }
     }
 
     const routesContent = `
