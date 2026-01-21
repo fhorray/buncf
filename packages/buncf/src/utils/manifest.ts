@@ -21,7 +21,12 @@ export async function generateRoutesManifest() {
 
     if (fs.existsSync(pagesDir)) {
       const glob = new Bun.Glob("**/*.{tsx,jsx,ts,js}");
-      const files = Array.from(glob.scanSync({ cwd: pagesDir, onlyFiles: true }));
+      const files: string[] = [];
+      for await (const file of glob.scan({ cwd: pagesDir, onlyFiles: true })) {
+        files.push(file);
+      }
+      // Ensure deterministic order
+      files.sort();
 
       routeEntries = files.map((file) => {
         const absFile = path.resolve(pagesDir, file);
