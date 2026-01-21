@@ -2,6 +2,7 @@
 import { type BunPlugin } from "bun";
 import * as path from "path";
 import * as fs from "fs";
+import { scanLayouts } from "./utils/scan-layouts";
 
 // Helper to read runtime code
 async function getRuntimeCode() {
@@ -106,31 +107,12 @@ export const bunToCloudflare = (entrypointPath?: string): BunPlugin => ({
         // Layouts Scanning (Recursive)
         const layoutRoutes: string[] = [];
         if (fs.existsSync(pagesDir)) {
-          const scanLayouts = (dir: string, baseRoute: string) => {
-            const files = fs.readdirSync(dir);
-            for (const file of files) {
-              const fullPath = path.join(dir, file);
-              const stat = fs.statSync(fullPath);
-              if (stat.isDirectory()) {
-                scanLayouts(fullPath, `${baseRoute}/${file}`);
-              } else if (file.match(/^_layout\.(tsx|jsx|ts|js)$/)) {
-                // Found a layout!
-                // Calculate route key from directory structure
-                // e.g. src/pages/_layout.tsx -> "/"
-                // src/pages/dashboard/_layout.tsx -> "/dashboard"
-                let routeKey = baseRoute === "" ? "/" : baseRoute;
-                // Normalize
-                if (!routeKey.startsWith("/")) routeKey = "/" + routeKey;
-
-                const entryDir = path.dirname(args.path);
-                const relPath = "./" + path.relative(entryDir, fullPath).split(path.sep).join(path.posix.sep);
-
-                // Security: JSON.stringify route key & value
-                layoutRoutes.push(`${JSON.stringify(routeKey)}: () => import(${JSON.stringify(relPath)})`);
-              }
-            }
-          };
-          scanLayouts(pagesDir, "");
+          const layouts = await scanLayouts(pagesDir);
+          for (const layout of layouts) {
+            const entryDir = path.dirname(args.path);
+            const relPath = "./" + path.relative(entryDir, layout.filepath).split(path.sep).join(path.posix.sep);
+            layoutRoutes.push(`${JSON.stringify(layout.route)}: () => import(${JSON.stringify(relPath)})`);
+          }
         }
 
         // Get Index HTML
