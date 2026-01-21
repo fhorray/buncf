@@ -16,7 +16,7 @@ export default function HomePage() {
 
       {/* Project Structure Section */}
       <section className="py-24 px-6">
-        <div className="max-w-5xl mx-auto">
+        <div className="w-full container mx-auto">
           <div className="text-center mb-12">
             <h2 className="text-3xl md:text-4xl font-bold mb-4">
               Intuitive
@@ -28,7 +28,7 @@ export default function HomePage() {
             </p>
           </div>
 
-          <div className="rounded-xl border border-border/50 bg-code-bg p-6 font-mono text-sm">
+          <div className="rounded-xl border border-border/50 bg-code-bg p-6 font-mono text-sm overflow-x-auto">
             <pre className="text-muted-foreground leading-relaxed">
               {`my-app/
  ├── src/
