@@ -35,6 +35,7 @@ export async function init(projectName: string, options: InitOptions = {}) {
   log.title(`✨ Welcome to Buncf Init!`);
 
   let choices: string[] = [];
+  let isStarter = false;
 
   if (options.template) {
      log.info(`Using template: ${options.template}`);
@@ -45,12 +46,19 @@ export async function init(projectName: string, options: InitOptions = {}) {
      } else if (options.template === "base") {
          choices = [];
      } else {
-         // TODO: support folder-based templates in templates/starters
-         log.warn(`Unknown template '${options.template}', falling back to interactive mode.`);
+         const starterPath = path.join(templatesDir, "starters", options.template);
+         // console.log("DEBUG: Checking starter path:", starterPath);
+         if (fs.existsSync(starterPath)) {
+            isStarter = true;
+         } else {
+            log.error(`Unknown template '${options.template}'.`);
+            log.info(`Available templates: base, full, minimal`);
+            process.exit(1);
+         }
      }
   }
 
-  if (!options.template || choices.length === 0 && options.template !== "base") {
+  if ((!options.template && !isStarter) || (choices.length === 0 && options.template !== "base" && !isStarter)) {
       choices = await multiSelect("Which stack would you like to build with?", [
         { name: "Tailwind CSS", value: "tailwind", description: "Modern styling with Tailwind 4" },
         { name: "Shadcn UI", value: "shadcn", description: "Essential UI components (Button, Input, Card, ...)" },
@@ -102,75 +110,80 @@ export async function init(projectName: string, options: InitOptions = {}) {
 
   const write = createFileWriter(projectDir);
 
-  // --- 1. Base Structure ---
-  copyDir(path.join(templatesDir, "base"), projectDir);
+  if (isStarter && options.template) {
+    // --- Starter Template Path ---
+    copyDir(path.join(templatesDir, "starters", options.template), projectDir);
+  } else {
+    // --- 1. Base Structure ---
+    copyDir(path.join(templatesDir, "base"), projectDir);
 
-  // --- 2. Features ---
-  if (useTailwind) {
-      copyDir(path.join(templatesDir, "features/tailwind"), projectDir);
+    // --- 2. Features ---
+    if (useTailwind) {
+        copyDir(path.join(templatesDir, "features/tailwind"), projectDir);
+    }
+    if (useBetterAuth) {
+        copyDir(path.join(templatesDir, "features/auth"), projectDir);
+    }
+    if (useDrizzle) {
+        copyDir(path.join(templatesDir, "features/drizzle"), projectDir);
+    }
+    if (useShadcn) {
+        copyDir(path.join(templatesDir, "features/shadcn"), projectDir);
+    }
+
+    // --- 3. Dynamic Files (package.json, index.tsx, _layout.tsx) ---
+    // We retain code generation for these as they require merging logic
+
+    // Dependencies
+    const deps: Record<string, string> = {
+      "buncf": "latest",
+      "react": "^19.0.0",
+      "react-dom": "^19.0.0",
+      "clsx": "^2.1.1",
+      "tailwind-merge": "^2.5.2",
+      "lucide-react": "latest"
+    };
+
+    const devDeps: Record<string, string> = {
+      "@types/react": "^19.0.0",
+      "@types/react-dom": "^19.0.0",
+      "typescript": "^5.0.0",
+      "wrangler": "latest",
+      "bun": "latest",
+      "miniflare": "latest",
+      "tw-animate-css": "latest"
+    };
+
+    if (useTailwind) {
+      devDeps["tailwindcss"] = "latest";
+    }
+
+    if (useShadcn) {
+      deps["class-variance-authority"] = "^0.7.0";
+      deps["@radix-ui/react-slot"] = "latest";
+      deps["@radix-ui/react-label"] = "latest";
+    }
+
+    if (useBetterAuth) {
+      deps["better-auth"] = "latest";
+    }
+
+    if (useDrizzle) {
+      deps["drizzle-orm"] = "latest";
+      devDeps["drizzle-kit"] = "latest";
+    }
+
+    write("package.json", base.pkgJson(projectName, deps, devDeps));
+
+    // Pages (Dynamic Glue)
+    write("src/pages/index.tsx", home.homePage(choices));
+    write("src/pages/_layout.tsx", rootLayout(useBetterAuth));
   }
-  if (useBetterAuth) {
-      copyDir(path.join(templatesDir, "features/auth"), projectDir);
-  }
-  if (useDrizzle) {
-      copyDir(path.join(templatesDir, "features/drizzle"), projectDir);
-  }
-  if (useShadcn) {
-      copyDir(path.join(templatesDir, "features/shadcn"), projectDir);
-  }
-
-  // --- 3. Dynamic Files (package.json, index.tsx, _layout.tsx) ---
-  // We retain code generation for these as they require merging logic
-
-  // Dependencies
-  const deps: Record<string, string> = {
-    "buncf": "latest",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "clsx": "^2.1.1",
-    "tailwind-merge": "^2.5.2",
-    "lucide-react": "latest"
-  };
-
-  const devDeps: Record<string, string> = {
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "typescript": "^5.0.0",
-    "wrangler": "latest",
-    "bun": "latest",
-    "miniflare": "latest",
-    "tw-animate-css": "latest"
-  };
-
-  if (useTailwind) {
-    devDeps["tailwindcss"] = "latest";
-  }
-
-  if (useShadcn) {
-    deps["class-variance-authority"] = "^0.7.0";
-    deps["@radix-ui/react-slot"] = "latest";
-    deps["@radix-ui/react-label"] = "latest";
-  }
-
-  if (useBetterAuth) {
-    deps["better-auth"] = "latest";
-  }
-
-  if (useDrizzle) {
-    deps["drizzle-orm"] = "latest";
-    devDeps["drizzle-kit"] = "latest";
-  }
-
-  write("package.json", base.pkgJson(projectName, deps, devDeps));
-
-  // Pages (Dynamic Glue)
-  write("src/pages/index.tsx", home.homePage(choices));
-  write("src/pages/_layout.tsx", rootLayout(useBetterAuth));
 
   log.box(`Project Created!
 
 Folder: ${projectName}
-Features: ${choices.join(", ") || "Minimal"}`);
+Features: ${isStarter ? options.template : (choices.join(", ") || "Minimal")}`);
 
   console.log(`
 Next steps:

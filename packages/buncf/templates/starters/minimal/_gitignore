@@ -1,0 +1,7 @@
+node_modules
+.buncf
+.wrangler
+dist
+.env
+*.dev.vars
+cloudflare-env.d.ts
