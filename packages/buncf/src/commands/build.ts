@@ -70,15 +70,17 @@ export const build = async (entrypoint: string) => {
   for (const publicFolder of publicFolders) {
     try {
       const glob = new Bun.Glob("**/*");
-      const files = glob.scanSync({ cwd: publicFolder, onlyFiles: true });
+      const files = Array.from(glob.scanSync({ cwd: publicFolder, onlyFiles: true }));
       let copied = 0;
-      for (const file of files) {
-        const src = `${publicFolder}/${file}`;
-        const dest = `./.buncf/cloudflare/assets/${file}`;
-        await Bun.write(dest, Bun.file(src));
-        copied++;
-        buildStats.assets++;
-      }
+      await Promise.all(
+        files.map(async (file) => {
+          const src = `${publicFolder}/${file}`;
+          const dest = `./.buncf/cloudflare/assets/${file}`;
+          await Bun.write(dest, Bun.file(src));
+          copied++;
+          buildStats.assets++;
+        })
+      );
       if (copied > 0) {
         log.step(`📁 Copied ${copied} files from ${publicFolder} to .buncf/cloudflare/assets`);
       }
