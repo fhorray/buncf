@@ -16,6 +16,8 @@ export interface PluginRegistryResult {
 
   /** Combined pages from all plugins */
   pages: Record<string, () => Promise<{ default: React.ComponentType }>>;
+
+  buildPlugins: BunPlugin[];
 }
 
 /**
@@ -32,6 +34,7 @@ export async function initializePlugins(
     middleware: [],
     assets: {},
     pages: {},
+    buildPlugins: [],
   };
 
   if (!plugins || plugins.length === 0) {
@@ -45,9 +48,15 @@ export async function initializePlugins(
 
   for (const plugin of plugins) {
     try {
-      // console.log(`[buncf] Registering plugin: ${plugin.name}`);
+      // Collect build hook (the plugin itself is a BunPlugin)
+      result.buildPlugins.push(plugin);
 
-      // Collect routes
+      // Log for development: announce plugin loading
+      if (process.env.NODE_ENV !== "production") {
+        console.log(`  \x1b[36m🔌 Plugin loaded:\x1b[0m \x1b[33m${plugin.name}\x1b[0m`);
+      }
+
+      // Collect routes from the plugin
       if (plugin.routes) {
         const basePath = plugin.basePath || `/_plugins/${plugin.name}`;
         pluginHandlers.push({
@@ -56,17 +65,17 @@ export async function initializePlugins(
         });
       }
 
-      // Collect middleware
-      if (plugin.middleware) {
-        result.middleware.push(...plugin.middleware);
+      // Collect middleware from the plugin
+      if (plugin.middlewares) {
+        result.middleware.push(...plugin.middlewares);
       }
 
-      // Collect assets
+      // Collect static assets provided by the plugin
       if (plugin.assets) {
         Object.assign(result.assets, plugin.assets);
       }
 
-      // Collect pages
+      // Collect client-side React pages from the plugin
       if (plugin.pages) {
         Object.assign(result.pages, plugin.pages);
       }
@@ -88,9 +97,9 @@ export async function initializePlugins(
           const newUrl = new URL(req.url);
           // Special case: if base path is "/admin" and path is "/admin", rewrite to "/"
           if (pathname === basePath) {
-             newUrl.pathname = "/";
+            newUrl.pathname = "/";
           } else {
-             newUrl.pathname = pathname.slice(basePath.length) || "/";
+            newUrl.pathname = pathname.slice(basePath.length) || "/";
           }
 
           const rewrittenRequest = new Request(newUrl.toString(), req);

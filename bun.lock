@@ -113,6 +113,7 @@
     "apps/playground": {
       "name": "playground",
       "dependencies": {
+        "@tailwindcss/postcss": "^4.1.18",
         "buncf": "workspace:*",
         "hono": "^4.11.4",
         "react": "19.2.0",

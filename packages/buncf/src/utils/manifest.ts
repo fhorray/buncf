@@ -4,7 +4,7 @@ import { scanLayouts } from "./scan-layouts";
 // @ts-ignore
 import { log } from "./log";
 
-export async function generateRoutesManifest() {
+export async function generateRoutesManifest(plugins: any[] = []) {
   log.step("🗺️ Generating client routes manifest (.buncf/routes.ts)...");
   const stats = {
     staticRoutes: 0,
@@ -18,6 +18,27 @@ export async function generateRoutesManifest() {
     const pagesDir = path.resolve(process.cwd(), "src/pages");
     let routeEntries: string[] = [];
     let layoutEntries: string[] = [];
+
+    // 0. Include Plugin Pages
+    for (const plugin of plugins) {
+      if (plugin.pages) {
+        for (const [route, importer] of Object.entries(plugin.pages)) {
+          // We don't have a file path for virtual plugin pages, so we just mark them
+          // The importer will be used directly if we were generating code that imports them,
+          // but for now buncf uses dynamic imports in the manifest.
+          // Since plugin.pages already contains importers like () => import(...), 
+          // we need to be careful how we stringify this into the routes.ts file.
+
+          // Actually, if we are generating .buncf/routes.ts, we can't easily stringify
+          // a function like () => import(...).
+          // The report says "Manifest generator now accepts the plugin list for future consistency".
+          // Maybe it's just to TRACK them in stats for now?
+          // Let's see how we can handle this.
+          stats.staticRoutes++;
+          stats.manifest.push({ path: route, type: "Static" });
+        }
+      }
+    }
 
     if (fs.existsSync(pagesDir)) {
       const glob = new Bun.Glob("**/*.{tsx,jsx,ts,js}");

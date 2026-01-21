@@ -75,6 +75,11 @@ export interface RouterProviderProps {
     string,
     { Component: ComponentType<any>; meta?: any }
   >;
+
+  /**
+   * Optional Buncf Plugins that provide dynamic pages or layouts
+   */
+  plugins?: any[];
 }
 
 /**
@@ -136,7 +141,7 @@ function RecursiveLayouts({
 }) {
   // Determine active layouts based on path segments
   // /dashboard/settings -> ["/", "/dashboard"]
-  const safePathname = pathname || "/";
+  const safePathname = pathname || '/';
   const segments = safePathname.split('/').filter(Boolean);
   const activeLayoutPaths = ['/']; // Always check root
 
@@ -182,7 +187,21 @@ export function BuncfRouter({
   initialPathname,
   initialComponent,
   initialLayouts,
+  plugins = [],
 }: RouterProviderProps) {
+  // Merge plugin routes and layouts
+  const effectiveRoutes = { ...routes };
+  const effectiveLayoutImporters = { ...layoutImporters };
+
+  for (const plugin of plugins) {
+    if (plugin.pages) {
+      Object.assign(effectiveRoutes, plugin.pages);
+    }
+    if (plugin.layouts) {
+      Object.assign(effectiveLayoutImporters, plugin.layouts);
+    }
+  }
+
   const [route, setRoute] = useState<RouteState>(() => {
     const state = routerStore.getState();
     if (initialPathname) {
@@ -323,9 +342,10 @@ export function BuncfRouter({
         pathsToCheck.map(async (pathKey) => {
           if (newLayouts[pathKey]) return; // Already loaded
 
-          let importer = layoutImporters[pathKey];
+          let importer = effectiveLayoutImporters[pathKey];
           // Try root fallback if pathKey is "/"
-          if (!importer && pathKey === '/') importer = layoutImporters[''];
+          if (!importer && pathKey === '/')
+            importer = effectiveLayoutImporters[''];
 
           if (importer) {
             try {
@@ -350,20 +370,20 @@ export function BuncfRouter({
       }
 
       // 2. Find matching route
-      let importer = routes[pathname];
+      let importer = effectiveRoutes[pathname];
       let matchedParams: Record<string, string> = {};
 
       // Try resolving index or trailing slash variations
       if (!importer) {
-        if (pathname === '/') importer = routes['/index'];
+        if (pathname === '/') importer = effectiveRoutes['/index'];
         else if (pathname.endsWith('/'))
-          importer = routes[pathname.slice(0, -1)];
-        else importer = routes[`${pathname}/`];
+          importer = effectiveRoutes[pathname.slice(0, -1)];
+        else importer = effectiveRoutes[`${pathname}/`];
       }
 
       // Dynamic Route Matching
       if (!importer) {
-        const routeKeys = Object.keys(routes);
+        const routeKeys = Object.keys(effectiveRoutes);
 
         // Sort keys to prioritize specific routes over catch-alls
         routeKeys.sort((a, b) => {
@@ -417,7 +437,7 @@ export function BuncfRouter({
           const match = pathname.match(regex);
 
           if (match) {
-            importer = routes[key];
+            importer = effectiveRoutes[key];
             match.slice(1).forEach((val, i) => {
               const paramName = paramNames[i];
               if (paramName) {
@@ -431,7 +451,7 @@ export function BuncfRouter({
 
       if (!importer) {
         // Fallback: Check for custom _notfound
-        const notFoundImporter = routes['/_notfound'];
+        const notFoundImporter = effectiveRoutes['/_notfound'];
         if (notFoundImporter) {
           const mod = await notFoundImporter();
           setPageComponent(() => mod.default);
@@ -555,8 +575,8 @@ export function BuncfRouter({
 
   // Error Handling
   if (error) {
-    const CustomError = routes['/_error']
-      ? React.lazy(routes['/_error'] as any)
+    const CustomError = effectiveRoutes['/_error']
+      ? React.lazy(effectiveRoutes['/_error'] as any)
       : null;
     const ErrorComp = CustomError ? (
       <React.Suspense fallback={<ErrorPage error={error} />}>
@@ -574,8 +594,8 @@ export function BuncfRouter({
   }
 
   // Loading Handling
-  const CustomLoading = routes['/_loading']
-    ? React.lazy(routes['/_loading'] as any)
+  const CustomLoading = effectiveRoutes['/_loading']
+    ? React.lazy(effectiveRoutes['/_loading'] as any)
     : null;
   if (loading && CustomLoading) {
     const LoadingComp = (

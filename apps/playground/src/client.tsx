@@ -7,6 +7,7 @@ import { createRoot } from 'react-dom/client';
 import { BuncfRouter } from 'buncf/router';
 import Layout from './_layout';
 import { routes, layouts } from '../.buncf/routes';
+import { cmsPlugin } from './plugins/cms';
 import './globals.css';
 
 const elem = document.getElementById('root');
@@ -22,7 +23,12 @@ if (!elem) {
 
 const app = (
   <StrictMode>
-    <BuncfRouter layout={Layout} routes={routes} layouts={layouts} />
+    <BuncfRouter
+      layout={Layout}
+      routes={routes}
+      layouts={layouts}
+      plugins={[cmsPlugin()]}
+    />
   </StrictMode>
 );
 

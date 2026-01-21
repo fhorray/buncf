@@ -36,16 +36,30 @@ export async function dev(entrypoint: string, flags: { verbose?: boolean, remote
   // Ensure .buncf exists
   if (!fs.existsSync(".buncf")) fs.mkdirSync(".buncf");
 
+  // Helper to extract plugins from entrypoint for build-time manifest generation
+  const getEntrypointPlugins = async () => {
+    try {
+      const absPath = path.resolve(process.cwd(), entrypoint);
+      // We use a timestamp to bypass cache if it's already loaded
+      const mod = await import(absPath + "?t=" + Date.now());
+      const app = mod.default || mod.app || mod;
+      return app?._config?.plugins || [];
+    } catch (e) {
+      if (flags.verbose) log.error(`Could not extract plugins from entrypoint: ${e}`,);
+      return [];
+    }
+  };
+
+  const entryPlugins = await getEntrypointPlugins();
+
   // 1. Client Build Watcher
   const clientEntry = ["./src/client.tsx", "./src/client.jsx", "./client.tsx", "./client.jsx"].find(path => Bun.file(path).size > 0);
 
-  // Generate routes once
-  await generateRoutesManifest();
+  // Generate routes once with plugins
+  await generateRoutesManifest(entryPlugins);
 
   // Generate type-safe API client
-  // @ts-ignore
-  const { generateAllApiTypes } = await import("../codegen");
-  await generateAllApiTypes(process.cwd(), { verbose: flags.verbose });
+  await generateAllApiTypes(process.cwd());
 
   // Helper: Manage Build Error State
   const setError = async (type: string, error: any) => {

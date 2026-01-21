@@ -174,7 +174,7 @@ export interface BuncfPlugin extends BunPlugin {
   /**
    * Middleware to apply to the application.
    */
-  middleware?: MiddlewareConfig[];
+  middlewares?: MiddlewareConfig[];
 
   /**
    * Static assets to copy to the output directory.

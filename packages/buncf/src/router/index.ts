@@ -111,17 +111,17 @@ export function createApp(options: CreateAppOptions = {}) {
   const pluginPages: Record<string, string> = {};
   if (options.plugins) {
     for (const p of options.plugins) {
-       if (p.pages) {
-         for (const [route, loader] of Object.entries(p.pages)) {
-            // Map route to a "virtual path" that the client router can understand
-            // The client router needs to import this.
-            // We use a convention: "virtual:plugin/page"
-            // But wait, `loader` is `() => import(...)`.
-            // The bundler handles this.
-            // We just need a unique string key for the router.
-            pluginPages[route] = `virtual:${p.name}:${route}`;
-         }
-       }
+      if (p.pages) {
+        for (const [route, loader] of Object.entries(p.pages)) {
+          // Map route to a "virtual path" that the client router can understand
+          // The client router needs to import this.
+          // We use a convention: "virtual:plugin/page"
+          // But wait, `loader` is `() => import(...)`.
+          // The bundler handles this.
+          // We just need a unique string key for the router.
+          pluginPages[route] = `virtual:${p.name}:${route}`;
+        }
+      }
     }
   }
 
@@ -345,8 +345,8 @@ export function createApp(options: CreateAppOptions = {}) {
         if (fs.existsSync(filePath)) {
           // 3a. Handle Server Actions
           if (filePath.match(/\.action\.(tsx|ts|jsx)$/)) {
-             // ... (existing stub generation)
-             const code = fs.readFileSync(filePath, "utf8");
+            // ... (existing stub generation)
+            const code = fs.readFileSync(filePath, "utf8");
             const relativePath = path.relative(process.cwd(), filePath);
             const exportMatches = code.matchAll(/export (?:async )?function ([a-zA-Z0-9_$]+)/g);
             const constExportMatches = code.matchAll(/export const ([a-zA-Z0-9_$]+) =/g);
@@ -393,7 +393,7 @@ export const ${name} = async (input) => {
                   headers: { "Content-Type": "application/javascript" },
                 });
               } else {
-                 const logs = result.logs.map(l => l.message).join("\n");
+                const logs = result.logs.map(l => l.message).join("\n");
                 console.error(`[buncf] Transpilation failed for ${filePath}:\n`, logs);
                 return new Response(`/* Transpilation Failed */`, { status: 500 });
               }
@@ -453,9 +453,16 @@ export const ${name} = async (input) => {
     routes: {
       ...(apiRouter ? apiRouter.getBunRoutes() : {}),
     },
+    middleware: [], // Will be populated after registry resolves
     development: process.env.NODE_ENV !== "production",
     _config: options, // EXPOSE CONFIG FOR BUILD
+    _pluginRegistry: pluginRegistryPromise, // INTERNAL: used by worker-factory to avoid race conditions
   };
+
+  // Wait for plugins to initialize and attach their middleware to the handler object
+  pluginRegistryPromise.then(registry => {
+    (handlerObject as any).middleware = registry.middleware || [];
+  });
 
   return handlerObject;
 }

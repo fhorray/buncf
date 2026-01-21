@@ -38,10 +38,11 @@ export function createWorkerHandler(handler: any, options: {
       if (!process.env) process.env = {};
 
       const stringEnv: Record<string, string> = {};
-      for (const key in env) {
-        if (typeof env[key] === 'string') {
-          stringEnv[key] = env[key] as string;
-          process.env[key] = env[key] as string;
+      const anyEnv = env as any;
+      for (const key in anyEnv) {
+        if (typeof anyEnv[key] === 'string') {
+          stringEnv[key] = anyEnv[key] as string;
+          process.env[key] = anyEnv[key] as string;
         }
       }
 
@@ -54,13 +55,31 @@ export function createWorkerHandler(handler: any, options: {
       const cfContext: CloudflareContext = { env, ctx, cf: (request as any).cf || {} };
 
       const execute = async () => {
-        if (middlewareCache.length > 0) {
+        // 0. Ensure plugins are initialized (avoid race conditions for middleware)
+        if ((handler as any)._pluginRegistry) {
+          await (handler as any)._pluginRegistry;
+        }
+
+        // Collect extra middlewares from the application (e.g. from plugins)
+        const appMiddleware = (handler as any).middleware || [];
+        const appMiddlewareCache = appMiddleware.map((m: any) => ({
+          handler: m.handler,
+          patterns: m.matcher
+            ? (Array.isArray(m.matcher) ? m.matcher : [m.matcher]).map((p: string) => {
+              try { return new URLPattern({ pathname: p }); } catch (e) { return null; }
+            }).filter(Boolean)
+            : null
+        }));
+
+        const combinedMiddleware = [...middlewareCache, ...appMiddlewareCache];
+
+        if (combinedMiddleware.length > 0) {
           let index = -1;
           const dispatch = async (i: number): Promise<Response> => {
             if (i <= index) throw new Error("next() called multiple times");
             index = i;
 
-            const item = middlewareCache[i];
+            const item = combinedMiddleware[i];
             if (!item) return finalHandler(request, env, ctx);
 
             let matched = true;

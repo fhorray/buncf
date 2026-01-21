@@ -28,11 +28,10 @@ export function cmsPlugin(options: CMSPluginOptions = {}): BuncfPlugin {
   return {
     name: "buncf-cms",
     basePath: adminPath,
-
     // 1. Build Hook (Standard Bun Plugin)
     setup(build) {
-       // Example: Add a virtual module or other build-time logic
-       // console.log("CMS Plugin Build Setup");
+      // Example: Add a virtual module or other build-time logic
+      // console.log("CMS Plugin Build Setup");
     },
 
     // 2. Runtime Routes (Buncf Extension)
@@ -48,11 +47,11 @@ export function cmsPlugin(options: CMSPluginOptions = {}): BuncfPlugin {
 
       // API: POST /api/posts
       if (path === "/api/posts" && method === "POST") {
-         const body = await req.json() as any;
-         const id = Date.now().toString();
-         const post = { id, title: body.title, content: body.content };
-         posts.set(id, post);
-         return Response.json(post);
+        const body = await req.json() as any;
+        const id = Date.now().toString();
+        const post = { id, title: body.title, content: body.content };
+        posts.set(id, post);
+        return Response.json(post);
       }
 
       // If no route matched, return 404 (or null/undefined to pass through)
@@ -61,29 +60,33 @@ export function cmsPlugin(options: CMSPluginOptions = {}): BuncfPlugin {
 
     // 3. React Pages Injection (Buncf Extension)
     pages: {
-        // We map a route pattern to a lazy-loaded component
-        // Since we are in the plugin file, we can import relative to here.
-        // But for this example, we'll inline a component using a data URI or just point to a file if we had one.
-        // Ideally, this points to `() => import("./pages/AdminDashboard")`.
+      // We map a route pattern to a lazy-loaded component
+      // Since we are in the plugin file, we can import relative to here.
+      // But for this example, we'll inline a component using a data URI or just point to a file if we had one.
+      // Ideally, this points to `() => import("./pages/AdminDashboard")`.
 
-        // IMPORTANT: The path key here is the ROUTE PATTERN.
-        // If basePath is set on the plugin, these routes are RELATIVE to basePath?
-        // No, typically `pages` keys are absolute routes in the app (like file system router).
-        // If we want them under /admin, we must specify /admin.
-        // Let's assume absolute paths for flexibility.
+      // IMPORTANT: The path key here is the ROUTE PATTERN.
+      // If basePath is set on the plugin, these routes are RELATIVE to basePath?
+      // No, typically `pages` keys are absolute routes in the app (like file system router).
+      // If we want them under /admin, we must specify /admin.
+      // Let's assume absolute paths for flexibility.
 
-        [`${adminPath}/dashboard`]: () => import("./pages/AdminDashboard"),
+      [`${adminPath}`]: () => import("./pages/AdminDashboard"),
     },
 
     // 4. Middleware (Buncf Extension)
-    middleware: [
-        {
-            matcher: `${adminPath}/*`,
-            handler: async (req, next) => {
-                // console.log("CMS Middleware Checking Auth...");
-                return next();
-            }
+    middlewares: [
+      {
+        matcher: `${adminPath}{/*}?`,
+        handler: async (req, next) => {
+          const isAuthenticated = false;
+          if (!isAuthenticated) {
+            return new Response("Unauthorized", { status: 401 });
+          }
+          // console.log("CMS Middleware Checking Auth...");
+          return next();
         }
+      }
     ]
   };
 }

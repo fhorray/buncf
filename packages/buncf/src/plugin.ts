@@ -106,20 +106,20 @@ export const bunToCloudflare = (entrypointPath?: string, buildConfig?: any): Bun
         // We inject plugin pages into __STATIC_PAGES_ROUTES__ so the Runtime Worker knows to serve index.html for them.
         // buildConfig is passed from build.ts (extracted from createApp)
         if (buildConfig && buildConfig.plugins) {
-           for (const p of buildConfig.plugins) {
-              if (p.pages) {
-                for (const route of Object.keys(p.pages)) {
-                   // Ensure it's not a duplicate
-                   // Use JSON.stringify for safety
-                   const routeKey = JSON.stringify(route);
-                   // We don't check for existence because plugins might override user pages or vice versa.
-                   // Here we just append. If runtime router handles duplicates, fine.
-                   // Actually, keys must be unique in JS object literal? No, last one wins.
-                   // But we are constructing a string for `const X = { ... }`.
-                   pageRoutes.push(`${routeKey}: () => new Response(__INDEX_HTML_CONTENT__, { headers: { "Content-Type": "text/html" } })`);
-                }
+          for (const p of buildConfig.plugins) {
+            if (p.pages) {
+              for (const route of Object.keys(p.pages)) {
+                // Ensure it's not a duplicate
+                // Use JSON.stringify for safety
+                const routeKey = JSON.stringify(route);
+                // We don't check for existence because plugins might override user pages or vice versa.
+                // Here we just append. If runtime router handles duplicates, fine.
+                // Actually, keys must be unique in JS object literal? No, last one wins.
+                // But we are constructing a string for `const X = { ... }`.
+                pageRoutes.push(`${routeKey}: () => new Response(__INDEX_HTML_CONTENT__, { headers: { "Content-Type": "text/html" } })`);
               }
-           }
+            }
+          }
         }
 
         // Layouts Scanning (Recursive)
