@@ -1,156 +1,84 @@
-import { CodeBlock } from "@/components/code-block";
-import { PageHeader, Paragraph, DocNavigation, InlineCode } from "@/components/docs/doc-components";
-import { Code2 } from "lucide-react";
+import { CodeBlock } from '@/components/code-block';
 
-export default function APIRoutesPage() {
+export const meta = () => [
+  { title: 'API Routes - Buncf' },
+  { name: 'description', content: 'Building type-safe API endpoints' },
+];
+
+export default function ApiRoutes() {
   return (
-    <article className="px-6 py-12 lg:px-12">
-      <PageHeader
-        icon={Code2}
-        title="API Routes"
-        description="Create type-safe API endpoints with file-system routing."
-      />
+    <div className="prose prose-invert max-w-none">
+      <h1>API Routes</h1>
+      <p>
+        API routes allow you to build backend endpoints. They are defined in <code>src/api</code>
+        and map directly to HTTP methods.
+      </p>
 
-      <section className="mb-10">
-        <h2 className="text-xl font-bold mb-4">Basic API Route</h2>
-        <Paragraph>
-          Export HTTP method handlers from files in <InlineCode>src/api/</InlineCode>:
-        </Paragraph>
-        <CodeBlock
-          code={`// src/api/hello.ts
-import { defineHandler } from 'buncf';
+      <h2>Defining Handlers</h2>
+      <p>
+        Export functions named <code>GET</code>, <code>POST</code>, <code>PUT</code>, <code>PATCH</code>,
+        or <code>DELETE</code> to handle requests. Buncf provides helper functions <code>defineHandler</code>
+        and <code>defineBody</code> for type safety.
+      </p>
 
-export const GET = defineHandler(() => {
-  return Response.json({ message: 'Hello, World!' });
-});
+      <h3>GET / DELETE Requests</h3>
+      <p>Use <code>defineHandler</code> for requests that typically don't include a body.</p>
 
-export const POST = defineHandler(async (req) => {
-  const body = await req.json();
-  return Response.json({ received: body });
-});`}
-          language="typescript"
-          filename="src/api/hello.ts"
-        />
-      </section>
-
-      <section className="mb-10">
-        <h2 className="text-xl font-bold mb-4">Dynamic Parameters</h2>
-        <Paragraph>
-          Access route parameters with full type safety:
-        </Paragraph>
-        <CodeBlock
-          code={`// src/api/users/[id].ts
-import { defineHandler } from 'buncf';
-
-interface User {
-  id: string;
-  name: string;
-}
-
-// Type the params and response
-export const GET = defineHandler<{ id: string }, User>((req) => {
-  const { id } = req.params;
-  return Response.json({ id, name: 'Alice' });
-});
-
-export const DELETE = defineHandler<{ id: string }, void>((req) => {
-  const { id } = req.params;
-  // Delete user logic...
-  return new Response(null, { status: 204 });
-});`}
-          language="typescript"
-          filename="src/api/users/[id].ts"
-        />
-      </section>
-
-      <section className="mb-10">
-        <h2 className="text-xl font-bold mb-4">Request Object</h2>
-        <Paragraph>
-          The request object extends the standard <InlineCode>Request</InlineCode> with additional properties:
-        </Paragraph>
-        <CodeBlock
-          code={`export const POST = defineHandler(async (req) => {
-  // Standard Request properties
-  const body = await req.json();
-  const headers = req.headers;
-  const url = new URL(req.url);
-
-  // buncf additions
-  const { id } = req.params;       // Route params
-  const query = req.query;          // Query string params
-  const cf = req.cf;                // Cloudflare request properties
-
-  return Response.json({ success: true });
-});`}
-          language="typescript"
-        />
-      </section>
-
-      <section className="mb-10">
-        <h2 className="text-xl font-bold mb-4">Catch-All Routes</h2>
-        <Paragraph>
-          Use <InlineCode>[...route].ts</InlineCode> to handle multiple paths with a single file:
-        </Paragraph>
-        <CodeBlock
-          code={`// src/api/[...route].ts
-import { defineHandler } from 'buncf';
-
-// Catches all routes under /api/*
-export const GET = defineHandler((req) => {
-  const path = req.params.route; // Array of path segments
-  
-  // Handle legacy routes
-  if (path[0] === 'legacy') {
-    return Response.json({ legacy: true });
-  }
-  
-  // Handle webhooks
-  if (path[0] === 'webhook') {
-    const provider = path[1];
-    return Response.json({ provider });
-  }
-  
-  return Response.json({ path });
-});`}
-          language="typescript"
-          filename="src/api/[...route].ts"
-        />
-        <Paragraph>
-          This is useful for handling complex routing scenarios or migrating legacy endpoints.
-        </Paragraph>
-      </section>
-
-      <section className="mb-10">
-        <h2 className="text-xl font-bold mb-4">Response Helpers</h2>
+      <div className="not-prose my-6">
         <CodeBlock
           code={`import { defineHandler } from 'buncf';
 
-export const GET = defineHandler(() => {
-  // JSON response
-  return Response.json({ data: 'value' });
+// Explicitly type params and response for client-side type inference
+export const GET = defineHandler<{ id: string }, { id: string; name: string }>(
+  (req) => {
+    const { id } = req.params;
+    return Response.json({ id, name: "Alice" });
+  }
+);`}
+          language="typescript"
+          filename="src/api/users/[id].ts"
+        />
+      </div>
 
-  // Text response
-  return new Response('Hello');
+      <h3>POST / PUT Requests</h3>
+      <p>
+        Use <code>defineBody</code> for requests that include a JSON body.
+        It adds a type-safe <code>req.json()</code> method.
+      </p>
 
-  // With status code
-  return new Response('Not Found', { status: 404 });
+      <div className="not-prose my-6">
+        <CodeBlock
+          code={`import { defineBody } from 'buncf';
 
-  // With headers
-  return new Response('OK', {
-    headers: { 'X-Custom': 'value' }
-  });
+interface CreateUserRequest {
+  name: string;
+  email: string;
+}
 
-  // Redirect
-  return Response.redirect('/new-url', 302);
+export const POST = defineBody<{}, CreateUserRequest>(async (req) => {
+  const body = await req.json(); // typed as CreateUserRequest
+  
+  // Create user logic...
+  
+  return Response.json({ success: true });
 });`}
           language="typescript"
+          filename="src/api/users/index.ts"
         />
-      </section>
+      </div>
 
-      <DocNavigation
-        prev={{ href: "/docs/routing", label: "File-System Routing" }}
-        next={{ href: "/docs/page-routes", label: "Page Routes" }}
-      />
-    </article>
+      <h2>Accessing Request Data</h2>
+      <p>The handler function receives a standard <code>Request</code> object, augmented with:</p>
+      <ul>
+        <li><code>req.params</code>: Route parameters (e.g., <code>id</code> from <code>[id].ts</code>).</li>
+        <li><code>req.json()</code>: (Via <code>defineBody</code>) Typed body parser.</li>
+      </ul>
+
+      <h2>Type-Safe Client</h2>
+      <p>
+        Buncf automatically generates a type-safe client based on your API definitions.
+        See the <a href="/docs/fetching">Data Fetching</a> section for details.
+      </p>
+    </div>
   );
 }

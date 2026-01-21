@@ -1,149 +1,87 @@
 import { CodeBlock } from '@/components/code-block';
-import {
-  PageHeader,
-  Paragraph,
-  DocNavigation,
-  InlineCode,
-} from '@/components/docs/doc-components';
-import { FolderTree } from 'lucide-react';
 
-export default function StructurePage() {
+export const meta = () => [
+  { title: 'Project Structure - Buncf' },
+  { name: 'description', content: 'Understanding the Buncf file structure' },
+];
+
+export default function Structure() {
   return (
-    <article className="px-6 py-12 lg:px-12">
-      <PageHeader
-        icon={FolderTree}
-        title="Project Structure"
-        description="Understanding the buncf project structure and file conventions."
-      />
+    <div className="prose prose-invert max-w-none">
+      <h1>Project Structure</h1>
+      <p>
+        Buncf follows a convention-over-configuration approach.
+        Here is the anatomy of a typical Buncf project:
+      </p>
 
-      <section className="mb-10">
-        <h2 className="text-xl font-bold mb-4">Directory Structure</h2>
-        <Paragraph>buncf follows a convention-based file structure:</Paragraph>
+      <div className="not-prose my-6">
         <CodeBlock
           code={`my-app/
 ├── src/
-│   ├── index.ts          # Server entry (optional)
-│   ├── index.html        # HTML template
-│   ├── client.tsx        # Client entry (React)
-│   ├── globals.css       # Tailwind/global styles
+│   ├── api/               # API Routes
+│   │   ├── hello.ts           → /api/hello
+│   │   └── users/
+│   │       ├── index.ts       → /api/users
+│   │       └── [id].ts        → /api/users/:id
 │   │
-│   ├── api/              # API Routes
-│   │   ├── hello.ts          → GET/POST /api/hello
-│   │   ├── users/
-│   │   │   ├── index.ts      → /api/users
-│   │   │   └── [id].ts       → /api/users/:id
-│   │   └── [...route].ts     → Hono catch-all
+│   ├── pages/             # Page Routes (React)
+│   │   ├── _layout.tsx        # Root layout (HTML shell)
+│   │   ├── _loading.tsx       # Suspense fallback
+│   │   ├── _error.tsx         # Error boundary
+│   │   ├── _notfound.tsx      # 404 page
+│   │   ├── index.tsx          → /
+│   │   └── about.tsx          → /about
 │   │
-│   └── pages/            # Page Routes
-│       ├── _layout.tsx       # Root layout
-│       ├── _loading.tsx      # Loading state
-│       ├── _error.tsx        # Error boundary
-│       ├── _notfound.tsx     # 404 page
-│       ├── index.tsx         → /
-│       └── dashboard/
-│           ├── _layout.tsx   # Nested layout
-│           └── index.tsx     → /dashboard
+│   ├── client.tsx         # Client entry point
+│   ├── index.html         # HTML template
+│   ├── index.ts           # Server entry (optional custom config)
+│   └── globals.css        # Global styles
 │
-├── public/               # Static assets
-├── .buncf/               # Generated (gitignored)
-└── wrangler.json         # Cloudflare config`}
+├── public/                # Static assets (favicon, images)
+├── .buncf/                # Generated build artifacts (do not edit)
+├── buncf.config.ts        # Optional Buncf configuration
+├── wrangler.json          # Cloudflare configuration
+├── package.json
+└── tsconfig.json`}
           language="text"
-          filename="Project Structure"
-          showLineNumbers={false}
         />
-      </section>
+      </div>
 
-      <section className="mb-10">
-        <h2 className="text-xl font-bold mb-4">Key Files</h2>
+      <h2>Key Directories & Files</h2>
 
-        <h3 className="text-lg font-semibold mt-6 mb-3">src/client.tsx</h3>
-        <Paragraph>
-          The client-side entry point. This is where you mount your React app
-          and import global styles.
-        </Paragraph>
-        <CodeBlock
-          code={`import { hydrateRoot } from 'react-dom/client';
-import { BrowserRouter } from 'buncf/router';
-import './globals.css';
+      <div className="space-y-6">
+        <div>
+          <h3 className="font-bold text-lg">src/pages/</h3>
+          <p className="text-muted-foreground">
+            Contains your application's React pages. The file structure maps directly to URLs.
+            Supports dynamic segments like <code>[id].tsx</code>.
+          </p>
+        </div>
 
-hydrateRoot(
-  document,
-  <BrowserRouter />
-);`}
-          language="tsx"
-          filename="src/client.tsx"
-        />
+        <div>
+          <h3 className="font-bold text-lg">src/api/</h3>
+          <p className="text-muted-foreground">
+            Contains API endpoints. Files should export functions named after HTTP methods
+            (GET, POST, etc.).
+          </p>
+        </div>
 
-        <h3 className="text-lg font-semibold mt-6 mb-3">src/index.html</h3>
-        <Paragraph>The HTML template used for server-side rendering.</Paragraph>
-        <CodeBlock
-          code={`<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <!-- Meta tags injected here -->
-</head>
-<body>
-  <div id="root"><!-- SSR content --></div>
-</body>
-</html>`}
-          language="html"
-          filename="src/index.html"
-        />
+        <div>
+          <h3 className="font-bold text-lg">src/client.tsx</h3>
+          <p className="text-muted-foreground">
+            The entry point for the browser bundle. This is where React hydration starts.
+            Typically imports global styles.
+          </p>
+        </div>
 
-        <h3 className="text-lg font-semibold mt-6 mb-3">wrangler.json</h3>
-        <Paragraph>Cloudflare Workers configuration file.</Paragraph>
-        <CodeBlock
-          code={`{
-  "name": "my-app",
-  "main": ".buncf/cloudflare/worker.js",
-  "compatibility_date": "2025-01-01",
-  "d1_databases": [],
-  "kv_namespaces": [],
-  "r2_buckets": []
-}`}
-          language="json"
-          filename="wrangler.json"
-        />
-      </section>
-
-      <section className="mb-10">
-        <h2 className="text-xl font-bold mb-4">Special Files</h2>
-        <Paragraph>
-          Files prefixed with <InlineCode>_</InlineCode> in the{' '}
-          <InlineCode>pages/</InlineCode> directory have special meaning:
-        </Paragraph>
-        <ul className="space-y-3 mt-4">
-          <li className="flex gap-3">
-            <code className="text-neon text-sm">_layout.tsx</code>
-            <span className="text-muted-foreground">
-              Wraps all pages in the same directory and below
-            </span>
-          </li>
-          <li className="flex gap-3">
-            <code className="text-neon font-mono text-sm">_loading.tsx</code>
-            <span className="text-muted-foreground">
-              Shown while page is loading
-            </span>
-          </li>
-          <li className="flex gap-3">
-            <code className="text-neon font-mono text-sm">_error.tsx</code>
-            <span className="text-muted-foreground">
-              Error boundary for the directory
-            </span>
-          </li>
-          <li className="flex gap-3">
-            <code className="text-neon font-mono text-sm">_notfound.tsx</code>
-            <span className="text-muted-foreground">404 page</span>
-          </li>
-        </ul>
-      </section>
-
-      <DocNavigation
-        prev={{ href: '/docs/cli', label: 'CLI Commands' }}
-        next={{ href: '/docs/routing', label: 'File-System Routing' }}
-      />
-    </article>
+        <div>
+          <h3 className="font-bold text-lg">wrangler.json</h3>
+          <p className="text-muted-foreground">
+            Configuration for Cloudflare Workers. Use this to define bindings for D1, KV, R2,
+            and environment variables.
+          </p>
+        </div>
+      </div>
+    </div>
   );
 }

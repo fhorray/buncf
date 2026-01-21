@@ -1,193 +1,97 @@
-'use client';
+import { CodeBlock } from '@/components/code-block';
 
-import { CodeBlock } from "@/components/code-block";
-import { PageHeader, Paragraph, DocNavigation, InlineCode } from "@/components/docs/doc-components";
-import { Zap } from "lucide-react";
+export const meta = () => [
+  { title: 'Server Actions - Buncf' },
+  { name: 'description', content: 'Type-safe RPC with Zod validation' },
+];
 
-export default function ActionsPage() {
+export default function Actions() {
   return (
-    <article className="px-6 py-12 lg:px-12">
-      <PageHeader
-        icon={Zap}
-        title="Server Actions"
-        description="Type-safe RPC with Zod validation."
-      />
+    <div className="prose prose-invert max-w-none">
+      <h1>Server Actions</h1>
+      <p>
+        Server Actions provide a seamless RPC (Remote Procedure Call) layer.
+        Instead of manually creating API endpoints and fetching them, you define a function
+        on the server and call it directly from the client.
+      </p>
 
-      <section className="mb-10">
-        <h2 className="text-xl font-bold mb-4">Defining Actions</h2>
-        <Paragraph>
-          Server actions are type-safe RPC functions with built-in Zod validation:
-        </Paragraph>
+      <h2>Defining an Action</h2>
+      <p>
+        Use <code>defineAction</code> to create an action. You must provide a Zod schema
+        to validate the input.
+      </p>
+
+      <div className="not-prose my-6">
         <CodeBlock
-          code={`// src/api/actions/createUser.ts
+          code={`// src/api/actions/todos.ts
 import { defineAction } from 'buncf';
 import { z } from 'zod';
+import { d1 } from 'buncf/bindings';
 
-const CreateUserSchema = z.object({
-  name: z.string().min(1),
-  email: z.string().email(),
-  role: z.enum(['user', 'admin']).default('user'),
-});
-
-export const createUser = defineAction(
-  CreateUserSchema,
+export const createTodo = defineAction(
+  // 1. Input Validation Schema
+  z.object({
+    title: z.string().min(3),
+    priority: z.enum(['low', 'high'])
+  }),
+  // 2. Server-side Handler
   async (input, ctx) => {
-    // input is fully typed based on schema
-    const { name, email, role } = input;
+    // 'input' is typed and validated
+    // 'ctx.request' contains the request object
     
-    // ctx provides request context
-    const userId = ctx.request.headers.get('x-user-id');
-    
-    // Insert into database
-    const user = await db.insert(users).values({
-      name,
-      email,
-      role,
-      createdBy: userId,
-    }).returning();
-
-    return user;
-  },
-);`}
-          language="typescript"
-          filename="src/api/actions/createUser.ts"
-        />
-      </section>
-
-      <section className="mb-10">
-        <h2 className="text-xl font-bold mb-4">Using Actions</h2>
-        <Paragraph>
-          Import and call actions directly - they're fully typed end-to-end:
-        </Paragraph>
-        <CodeBlock
-          code={`// src/pages/users/new.tsx
-import { createUser } from '../../api/actions/createUser';
-
-export default function NewUserPage() {
-  const handleSubmit = async (formData: FormData) => {
-    try {
-      // Fully typed - TypeScript knows the input and output types
-      const user = await createUser({
-        name: formData.get('name') as string,
-        email: formData.get('email') as string,
-      });
+    await d1.DB.prepare('INSERT INTO todos (title, priority) VALUES (?, ?)')
+      .bind(input.title, input.priority)
+      .run();
       
-      console.log('Created user:', user);
-    } catch (error) {
-      // Validation errors are thrown automatically
-      console.error('Validation failed:', error);
-    }
-  };
-
-  return (
-    <form action={handleSubmit}>
-      <input name="name" placeholder="Name" />
-      <input name="email" type="email" placeholder="Email" />
-      <button type="submit">Create User</button>
-    </form>
-  );
-}`}
-          language="tsx"
-          filename="src/pages/users/new.tsx"
-        />
-      </section>
-
-      <section className="mb-10">
-        <h2 className="text-xl font-bold mb-4">Action Context</h2>
-        <Paragraph>
-          The context object provides access to the request and Cloudflare bindings:
-        </Paragraph>
-        <CodeBlock
-          code={`export const myAction = defineAction(
-  MySchema,
-  async (input, ctx) => {
-    // Access the original request
-    const authHeader = ctx.request.headers.get('Authorization');
-    
-    // Access Cloudflare bindings
-    const db = ctx.env.MY_DB;
-    const kv = ctx.env.MY_KV;
-    
-    // Access request context
-    const country = ctx.cf?.country;
-    
     return { success: true };
-  },
+  }
 );`}
           language="typescript"
+          filename="src/api/actions/todos.ts"
         />
-      </section>
+      </div>
 
-      <section className="mb-10">
-        <h2 className="text-xl font-bold mb-4">Error Handling</h2>
-        <Paragraph>
-          Validation errors are automatically thrown with detailed messages:
-        </Paragraph>
+      <h2>Calling from Client</h2>
+      <p>
+        Import the action and call it like a normal async function. Buncf handles the
+        network request, serialization, and error handling.
+      </p>
+
+      <div className="not-prose my-6">
         <CodeBlock
-          code={`import { createUser } from '../api/actions/createUser';
-import { ActionError } from 'buncf';
+          code={`// src/pages/todos.tsx
+import { createTodo } from '../api/actions/todos';
+import { useState } from 'react';
 
-async function handleCreate() {
-  try {
-    const user = await createUser({
-      name: '', // Invalid - empty string
-      email: 'not-an-email', // Invalid email format
-    });
-  } catch (error) {
-    if (error instanceof ActionError) {
-      // Validation error with details
-      console.log(error.errors);
-      // [
-      //   { path: ['name'], message: 'String must contain at least 1 character(s)' },
-      //   { path: ['email'], message: 'Invalid email' }
-      // ]
+export default function Todos() {
+  const [error, setError] = useState('');
+
+  const handleAdd = async () => {
+    try {
+      // Type-safe call!
+      await createTodo({ title: "Buy Milk", priority: "high" });
+    } catch (e) {
+      // Validation errors or server errors
+      setError(e.message);
     }
-  }
-}`}
-          language="tsx"
-        />
-      </section>
-
-      <section className="mb-10">
-        <h2 className="text-xl font-bold mb-4">With useFetcher</h2>
-        <Paragraph>
-          Combine actions with <InlineCode>useFetcher</InlineCode> for loading states:
-        </Paragraph>
-        <CodeBlock
-          code={`import { useFetcher } from 'buncf/router';
-import { createUser } from '../api/actions/createUser';
-
-function CreateUserForm() {
-  const { submit, isSubmitting } = useFetcher();
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const formData = new FormData(e.target as HTMLFormElement);
-    
-    await submit(() => createUser({
-      name: formData.get('name') as string,
-      email: formData.get('email') as string,
-    }));
   };
 
-  return (
-    <form onSubmit={handleSubmit}>
-      <input name="name" />
-      <input name="email" type="email" />
-      <button disabled={isSubmitting}>
-        {isSubmitting ? 'Creating...' : 'Create'}
-      </button>
-    </form>
-  );
+  return <button onClick={handleAdd}>Add Todo</button>;
 }`}
           language="tsx"
+          filename="src/pages/todos.tsx"
         />
-      </section>
+      </div>
 
-      <DocNavigation
-        prev={{ href: "/docs/fetching", label: "Data Fetching" }}
-        next={{ href: "/docs/bindings", label: "Magic Bindings" }}
-      />
-    </article>
+      <h2>How it Works</h2>
+      <p>
+        During the build process, Buncf:
+      </p>
+      <ol>
+        <li>Extracts the server-side code into a dedicated API endpoint.</li>
+        <li>Replaces the client-side import with a lightweight fetch stub.</li>
+        <li>Ensures types are preserved across the boundary.</li>
+      </ol>
+    </div>
   );
 }
