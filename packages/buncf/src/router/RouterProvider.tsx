@@ -42,6 +42,39 @@ export interface RouterProviderProps {
       meta?: any;
     }>
   >;
+
+  /**
+   * Initial data for SSR
+   */
+  initialData?: any;
+
+  /**
+   * Initial params for SSR
+   */
+  initialParams?: Record<string, string>;
+
+  /**
+   * Initial query for SSR
+   */
+  initialQuery?: Record<string, string>;
+
+  /**
+   * Initial pathname for SSR
+   */
+  initialPathname?: string;
+
+  /**
+   * Initial Component for SSR
+   */
+  initialComponent?: ComponentType<any>;
+
+  /**
+   * Initial Layouts for SSR
+   */
+  initialLayouts?: Record<
+    string,
+    { Component: ComponentType<any>; meta?: any }
+  >;
 }
 
 /**
@@ -142,17 +175,34 @@ export function BuncfRouter({
   layout: LegacyRootLayout,
   routes = {},
   layouts: layoutImporters = {},
+  initialData,
+  initialParams,
+  initialQuery,
+  initialPathname,
+  initialComponent,
+  initialLayouts,
 }: RouterProviderProps) {
-  const [route, setRoute] = useState<RouteState>(routerStore.getState());
+  const [route, setRoute] = useState<RouteState>(() => {
+    const state = routerStore.getState();
+    if (initialPathname) {
+      return {
+        pathname: initialPathname,
+        params: initialParams || {},
+        query: initialQuery || {},
+      };
+    }
+    return state;
+  });
+
   const [PageComponent, setPageComponent] = useState<ComponentType<any> | null>(
-    null,
+    () => initialComponent || null,
   );
   // Store loaded layouts: path -> { Component, meta }
   const [loadedLayouts, setLoadedLayouts] = useState<
     Record<string, { Component: ComponentType<any>; meta?: any }>
-  >({});
+  >(initialLayouts || {});
   // Store page data from loader
-  const [pageData, setPageData] = useState<any>(null);
+  const [pageData, setPageData] = useState<any>(initialData || null);
 
   const [error, setError] = useState<Error | null>(null);
   const [loading, setLoading] = useState(false);
