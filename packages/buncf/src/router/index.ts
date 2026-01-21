@@ -248,15 +248,19 @@ export function createApp(options: CreateAppOptions = {}) {
 
     // 0.5. Try Plugin Routes (before user routes)
     if (pluginHandler) {
-      const cfContext = getCloudflareContext();
-      const pluginCtx: BuncfPluginContext = {
-        env: cfContext.env,
-        ctx: cfContext.ctx,
-        request: req,
-      };
-      const pluginResponse = await pluginHandler(req, pluginCtx);
-      if (pluginResponse) {
-        return pluginResponse;
+      try {
+        const cfContext = getCloudflareContext();
+        const pluginCtx: BuncfPluginContext = {
+          env: cfContext.env,
+          ctx: cfContext.ctx,
+          request: req,
+        };
+        const pluginResponse = await pluginHandler(req, pluginCtx);
+        if (pluginResponse) {
+          return pluginResponse;
+        }
+      } catch (e) {
+        // Context not available, skip plugin routes
       }
     }
 
@@ -446,16 +450,16 @@ export const ${name} = async (input) => {
     }
 
     // 5. Try ASSETS binding as final fallback (for dev-only routes like /_buncf/*)
-    const cfContext = getCloudflareContext();
-    if (cfContext?.env?.ASSETS) {
-      try {
+    try {
+      const cfContext = getCloudflareContext();
+      if (cfContext?.env?.ASSETS) {
         const assetRes = await cfContext.env.ASSETS.fetch(req);
         if (assetRes.status !== 404) {
           return assetRes;
         }
-      } catch (e) {
-        // Ignore errors, fall through to 404
       }
+    } catch (e) {
+      // Ignore context errors in production - this fallback is mainly for dev
     }
 
     return new Response("Not Found", { status: 404 });

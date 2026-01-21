@@ -53,9 +53,15 @@ async function globalServeAsset(req: Request, assetPrefix: string = "assets"): P
     return new Response("Invalid Path Name", { status: 400 });
   }
 
-  // Type-safe Binding Access
-  const ctx = getCloudflareContext();
-  const assetsBinding = ctx?.env?.ASSETS;
+  // Type-safe Binding Access - wrapped in try-catch for production safety
+  let assetsBinding: any = null;
+  try {
+    const ctx = getCloudflareContext();
+    assetsBinding = ctx?.env?.ASSETS;
+  } catch (e) {
+    // Context not available, return null to skip asset serving
+    return null;
+  }
 
   if (!assetsBinding) return null;
 

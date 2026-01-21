@@ -54,6 +54,10 @@ export function createWorkerHandler(handler: any, options: {
       // Context Wrapper logic
       const cfContext: CloudflareContext = { env, ctx, cf: (request as any).cf || {} };
 
+      // Set global env fallback for Workers where AsyncLocalStorage doesn't propagate
+      (globalThis as any).__BUNCF_ENV__ = env;
+      (globalThis as any).__BUNCF_CTX__ = ctx;
+
       const execute = async () => {
         // 0. Ensure plugins are initialized (avoid race conditions for middleware)
         if ((handler as any)._pluginRegistry) {
