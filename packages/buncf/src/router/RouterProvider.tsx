@@ -136,7 +136,8 @@ function RecursiveLayouts({
 }) {
   // Determine active layouts based on path segments
   // /dashboard/settings -> ["/", "/dashboard"]
-  const segments = pathname.split('/').filter(Boolean);
+  const safePathname = pathname || "/";
+  const segments = safePathname.split('/').filter(Boolean);
   const activeLayoutPaths = ['/']; // Always check root
 
   let current = '';

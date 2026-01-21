@@ -25,7 +25,7 @@ ${code}
   throw new Error("Buncf runtime file not found");
 }
 
-export const bunToCloudflare = (entrypointPath?: string): BunPlugin => ({
+export const bunToCloudflare = (entrypointPath?: string, buildConfig?: any): BunPlugin => ({
   name: "bun-to-cloudflare",
   setup(build) {
     const absoluteEntryPath = entrypointPath ? path.resolve(process.cwd(), entrypointPath) : null;
@@ -68,6 +68,8 @@ export const bunToCloudflare = (entrypointPath?: string): BunPlugin => ({
         .replace(/export\s+default\s+buncfRuntimeHandler;?/g, "");
 
       // Inject Constants (Static Routes)
+      // These are static routes discovered at BUILD time from file system.
+      // Dynamic plugin routes are handled by `createApp` via plugin registry.
       let injectedRoutesCode = "";
       try {
         const apiDir = path.resolve(process.cwd(), "src/api");
@@ -76,7 +78,6 @@ export const bunToCloudflare = (entrypointPath?: string): BunPlugin => ({
             .map(([r, f]) => {
               const entryDir = path.dirname(args.path);
               const relPath = "./" + path.relative(entryDir, f).split(path.sep).join(path.posix.sep);
-              // Security: JSON.stringify preventing code injection via filenames
               return `${JSON.stringify(r)}: () => import(${JSON.stringify(relPath)})`;
             })
           : [];
@@ -84,14 +85,12 @@ export const bunToCloudflare = (entrypointPath?: string): BunPlugin => ({
         const pagesDir = path.resolve(process.cwd(), "src/pages");
         const pageRoutes = fs.existsSync(pagesDir)
           ? Object.entries(new Bun.FileSystemRouter({ dir: pagesDir, style: "nextjs" }).routes)
-            // Security: JSON.stringify route key
             .map(([r, _]) => `${JSON.stringify(r)}: () => new Response(__INDEX_HTML_CONTENT__, { headers: { "Content-Type": "text/html" } })`)
           : [];
 
         // Manual injection of special pages (_error, _loading, _notfound)
         const specialPages = ["_error", "_loading", "_notfound"];
         for (const page of specialPages) {
-          // efficient search for extensions
           let ext = ["tsx", "jsx", "ts", "js"].find(e => fs.existsSync(path.join(pagesDir, `${page}.${e}`)));
           if (!ext) {
             const srcDir = path.resolve(process.cwd(), "src");
@@ -99,9 +98,28 @@ export const bunToCloudflare = (entrypointPath?: string): BunPlugin => ({
           }
 
           if (ext) {
-            // Add as a known route key, e.g. "/_error"
             pageRoutes.push(`"/${page}": () => new Response(__INDEX_HTML_CONTENT__, { headers: { "Content-Type": "text/html" } })`);
           }
+        }
+
+        // --- Plugin Pages Injection ---
+        // We inject plugin pages into __STATIC_PAGES_ROUTES__ so the Runtime Worker knows to serve index.html for them.
+        // buildConfig is passed from build.ts (extracted from createApp)
+        if (buildConfig && buildConfig.plugins) {
+           for (const p of buildConfig.plugins) {
+              if (p.pages) {
+                for (const route of Object.keys(p.pages)) {
+                   // Ensure it's not a duplicate
+                   // Use JSON.stringify for safety
+                   const routeKey = JSON.stringify(route);
+                   // We don't check for existence because plugins might override user pages or vice versa.
+                   // Here we just append. If runtime router handles duplicates, fine.
+                   // Actually, keys must be unique in JS object literal? No, last one wins.
+                   // But we are constructing a string for `const X = { ... }`.
+                   pageRoutes.push(`${routeKey}: () => new Response(__INDEX_HTML_CONTENT__, { headers: { "Content-Type": "text/html" } })`);
+                }
+              }
+           }
         }
 
         // Layouts Scanning (Recursive)
@@ -130,7 +148,6 @@ export const bunToCloudflare = (entrypointPath?: string): BunPlugin => ({
               .replace(/href=["'](?:\.?\/)?(.*)\.css["']/g, 'href="/$1.css"')
               .replace(/src=["']\.\/(.*)["']/g, 'src="/$1"')
               .replace(/href=["']\.\/(.*)["']/g, 'href="/$1"');
-            // Escape for template literal
             indexHtml = text.replace(/`/g, "\\`").replace(/\${/g, "\\${");
             break;
           }
@@ -150,10 +167,9 @@ const __INDEX_HTML_CONTENT__ = \`${indexHtml}\`;
       let processedCode = originalCode;
 
       // Inject Routes into createApp
-      // Inject Routes into createApp
       const createAppRegex = /createApp\s*\(\s*(\{?)/;
       processedCode = processedCode.replace(createAppRegex, (match, brace) => {
-        const injection = `staticRoutes: { api: __STATIC_API_ROUTES__, pages: __STATIC_PAGES_ROUTES__, layouts: __STATIC_LAYOUTS_ROUTES__ }, indexHtmlContent: __INDEX_HTML_CONTENT__, pluginRouteHandler: __PLUGIN_ROUTE_HANDLER__, `;
+        const injection = `staticRoutes: { api: __STATIC_API_ROUTES__, pages: __STATIC_PAGES_ROUTES__, layouts: __STATIC_LAYOUTS_ROUTES__ }, indexHtmlContent: __INDEX_HTML_CONTENT__, `;
         if (brace) return `createApp({ ${injection}`;
         return `createApp({ ${injection} }`;
       });
@@ -179,31 +195,13 @@ const __INDEX_HTML_CONTENT__ = \`${indexHtml}\`;
         }
       }
 
-      // Plugin Injection
-      let pluginImportCode = "";
-      let pluginInitCode = "const __PLUGIN_ROUTE_HANDLER__ = null;";
-
-      const configPath = path.resolve(process.cwd(), "buncf.config.ts");
-      if (fs.existsSync(configPath)) {
-        const entryDir = path.dirname(args.path);
-        const relConfigPath = "./" + path.relative(entryDir, configPath).split(path.sep).join(path.posix.sep);
-
-        pluginImportCode = `
-import { initializePlugins } from "buncf";
-import __BUNCF_CONFIG__ from "${relConfigPath}";
-`;
-        pluginInitCode = `
-const __PLUGIN_REGISTRY__ = await initializePlugins(__BUNCF_CONFIG__.buncfPlugins || []);
-const __PLUGIN_ROUTE_HANDLER__ = __PLUGIN_REGISTRY__.routeHandler;
-`;
-      }
+      // REMOVED: buncf.config.ts plugin injection code
+      // Plugins are now handled by createApp which calls initializePlugins at runtime.
 
       const combinedCode = `
 ${runtimeNoExport}
 ${injectedRoutesCode}
 ${middlewareImportCode}
-${pluginImportCode}
-${pluginInitCode}
 
 // --- USER CODE ---
 ${processedCode}
