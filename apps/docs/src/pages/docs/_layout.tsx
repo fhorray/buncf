@@ -12,7 +12,7 @@ export default function DocsLayout({
       <Header />
       <div className="flex pt-16">
         <Sidebar />
-        <main className="flex-1 min-w-0 max-w-4xl">{children}</main>
+        <main className="flex-1 min-w-0 max-w-4xl mx-auto">{children}</main>
       </div>
     </div>
   );
