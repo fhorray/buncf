@@ -1,104 +1,82 @@
-import { CodeBlock } from "@/components/code-block";
-import { PageHeader, Paragraph, TableWrapper, DocNavigation, InlineCode } from "@/components/docs/doc-components";
-import { Route } from "lucide-react";
+import { CodeBlock } from '@/components/code-block';
 
-export default function RoutingPage() {
+export const meta = () => [
+  { title: 'Routing - Buncf' },
+  { name: 'description', content: 'Overview of routing in Buncf' },
+];
+
+export default function Routing() {
   return (
-    <article className="px-6 py-12 lg:px-12">
-      <PageHeader
-        icon={Route}
-        title="File-System Routing"
-        description="Learn how buncf maps files to routes automatically."
-      />
+    <div className="prose prose-invert max-w-none">
+      <h1>Routing</h1>
+      <p>
+        Buncf uses a file-system based router built on standard web URL patterns.
+        Routes are defined by the file structure in your <code>src</code> directory.
+      </p>
 
-      <section className="mb-10">
-        <h2 className="text-xl font-bold mb-4">How it Works</h2>
-        <Paragraph>
-          buncf uses a file-system based router. Simply create files in the <InlineCode>src/api/</InlineCode> 
-          or <InlineCode>src/pages/</InlineCode> directories and they become routes automatically.
-        </Paragraph>
-      </section>
+      <h2>Two Types of Routes</h2>
+      <p>Buncf separates your application into two distinct routing domains:</p>
 
-      <section className="mb-10">
-        <h2 className="text-xl font-bold mb-4">Dynamic Segments</h2>
-        <Paragraph>
-          Use brackets to create dynamic route segments:
-        </Paragraph>
-        <TableWrapper>
-          <thead className="bg-secondary/30">
-            <tr>
-              <th className="text-left p-3 font-semibold">Pattern</th>
-              <th className="text-left p-3 font-semibold">Example URL</th>
-              <th className="text-left p-3 font-semibold">Params</th>
+      <ul>
+        <li>
+          <strong>Page Routes</strong> (<code>src/pages</code>):
+          Serve HTML and React components. These are rendered on the server (SSR) and hydrated on the client.
+        </li>
+        <li>
+          <strong>API Routes</strong> (<code>src/api</code>):
+          Serve JSON or other data. These map directly to HTTP methods.
+        </li>
+      </ul>
+
+      <h2>Dynamic Segments</h2>
+      <p>Both routers support dynamic segments using bracket syntax:</p>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-sm">
+          <thead>
+            <tr className="border-b border-border">
+              <th className="py-2">File Name</th>
+              <th className="py-2">Example URL</th>
+              <th className="py-2">Params Object</th>
             </tr>
           </thead>
           <tbody>
-            {[
-              { pattern: "[id].tsx", example: "/users/123", params: '{ id: "123" }' },
-              { pattern: "[...slug].tsx", example: "/docs/a/b/c", params: '{ slug: "a/b/c" }' },
-              { pattern: "[[optional]].tsx", example: "/ or /page", params: '{ optional?: "page" }' },
-            ].map((item) => (
-              <tr key={item.pattern} className="border-t border-border/50">
-                <td className="p-3 font-mono text-neon">{item.pattern}</td>
-                <td className="p-3 text-muted-foreground">{item.example}</td>
-                <td className="p-3 font-mono text-sm">{item.params}</td>
-              </tr>
-            ))}
+            <tr className="border-b border-border/50">
+              <td className="py-2 font-mono">index.tsx</td>
+              <td className="py-2 font-mono">/</td>
+              <td className="py-2 font-mono">{'{}'}</td>
+            </tr>
+            <tr className="border-b border-border/50">
+              <td className="py-2 font-mono">about.tsx</td>
+              <td className="py-2 font-mono">/about</td>
+              <td className="py-2 font-mono">{'{}'}</td>
+            </tr>
+            <tr className="border-b border-border/50">
+              <td className="py-2 font-mono">[id].tsx</td>
+              <td className="py-2 font-mono">/123</td>
+              <td className="py-2 font-mono">{'{ id: "123" }'}</td>
+            </tr>
+            <tr className="border-b border-border/50">
+              <td className="py-2 font-mono">posts/[slug].tsx</td>
+              <td className="py-2 font-mono">/posts/hello-world</td>
+              <td className="py-2 font-mono">{'{ slug: "hello-world" }'}</td>
+            </tr>
+            <tr className="border-b border-border/50">
+              <td className="py-2 font-mono">[...rest].tsx</td>
+              <td className="py-2 font-mono">/a/b/c</td>
+              <td className="py-2 font-mono">{'{ rest: "a/b/c" }'}</td>
+            </tr>
           </tbody>
-        </TableWrapper>
-      </section>
+        </table>
+      </div>
 
-      <section className="mb-10">
-        <h2 className="text-xl font-bold mb-4">Route Priority</h2>
-        <Paragraph>
-          When multiple routes could match a URL, buncf uses the following priority:
-        </Paragraph>
-        <ol className="list-decimal list-inside text-muted-foreground space-y-2 ml-4 mb-4">
-          <li>Static routes (e.g., <InlineCode>/about</InlineCode>)</li>
-          <li>Dynamic routes (e.g., <InlineCode>/users/[id]</InlineCode>)</li>
-          <li>Catch-all routes (e.g., <InlineCode>/docs/[...slug]</InlineCode>)</li>
-          <li>Optional catch-all routes (e.g., <InlineCode>/[[...path]]</InlineCode>)</li>
-        </ol>
-      </section>
-
-      <section className="mb-10">
-        <h2 className="text-xl font-bold mb-4">Route Groups</h2>
-        <Paragraph>
-          Use parentheses to create route groups that don't affect the URL:
-        </Paragraph>
-        <CodeBlock
-          code={`src/pages/
-├── (auth)/
-│   ├── login.tsx      → /login
-│   └── register.tsx   → /register
-└── (dashboard)/
-    ├── _layout.tsx    # Shared layout
-    ├── index.tsx      → /
-    └── settings.tsx   → /settings`}
-          language="text"
-          showLineNumbers={false}
-        />
-      </section>
-
-      <section className="mb-10">
-        <h2 className="text-xl font-bold mb-4">Index Routes</h2>
-        <Paragraph>
-          Files named <InlineCode>index.tsx</InlineCode> or <InlineCode>index.ts</InlineCode> match 
-          the directory path:
-        </Paragraph>
-        <CodeBlock
-          code={`src/pages/index.tsx        → /
-src/pages/users/index.tsx  → /users
-src/api/users/index.ts     → /api/users`}
-          language="text"
-          showLineNumbers={false}
-        />
-      </section>
-
-      <DocNavigation
-        prev={{ href: "/docs/structure", label: "Project Structure" }}
-        next={{ href: "/docs/api-routes", label: "API Routes" }}
-      />
-    </article>
+      <h2>Route Priority</h2>
+      <p>Routes are matched in the following order:</p>
+      <ol>
+        <li><strong>Static Routes:</strong> Exact matches (e.g., <code>/about</code>)</li>
+        <li><strong>Dynamic Routes:</strong> Named parameters (e.g., <code>/[id]</code>)</li>
+        <li><strong>Catch-all Routes:</strong> Wildcards (e.g., <code>/[...slug]</code>)</li>
+      </ol>
+    </div>
   );
 }

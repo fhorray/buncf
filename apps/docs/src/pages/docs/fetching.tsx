@@ -1,31 +1,26 @@
-'use client';
+import { CodeBlock } from '@/components/code-block';
 
-import { CodeBlock } from "@/components/code-block";
-import { PageHeader, Paragraph, DocNavigation, InlineCode } from "@/components/docs/doc-components";
-import { RefreshCw } from "lucide-react";
+export const meta = () => [
+  { title: 'Data Fetching - Buncf' },
+  { name: 'description', content: 'Using useFetcher for data and mutations' },
+];
 
-export default function FetchingPage() {
+export default function Fetching() {
   return (
-    <article className="px-6 py-12 lg:px-12">
-      <PageHeader
-        icon={RefreshCw}
-        title="Data Fetching"
-        description="SWR-style data fetching with useFetcher."
-      />
+    <div className="prose prose-invert max-w-none">
+      <h1>Data Fetching</h1>
+      <p>
+        Buncf provides a powerful <code>useFetcher</code> hook for interacting with your API.
+        It supports both data fetching (SWR-style) and mutations.
+      </p>
 
-      <section className="mb-10">
-        <h2 className="text-xl font-bold mb-4">useFetcher Hook</h2>
-        <Paragraph>
-          The <InlineCode>useFetcher</InlineCode> hook provides SWR-style data fetching with automatic caching, 
-          revalidation, and mutation support.
-        </Paragraph>
-      </section>
+      <h2>Fetching Data (GET)</h2>
+      <p>
+        To fetch data, provide a URL key to <code>useFetcher</code>. The hook returns
+        <code>data</code>, <code>isLoading</code>, and a <code>mutate</code> function to reload.
+      </p>
 
-      <section className="mb-10">
-        <h2 className="text-xl font-bold mb-4">Auto-Fetch (GET)</h2>
-        <Paragraph>
-          Pass a URL to automatically fetch data on mount:
-        </Paragraph>
+      <div className="not-prose my-6">
         <CodeBlock
           code={`import { useFetcher } from 'buncf/router';
 
@@ -34,136 +29,109 @@ interface User {
   name: string;
 }
 
-function UserList() {
-  const { data, isLoading, error, mutate } = useFetcher<User[]>('/api/users');
+export default function UserList() {
+  // Automatically fetches on mount
+  const { data, isLoading, mutate } = useFetcher<User[]>('/api/users');
 
   if (isLoading) return <div>Loading...</div>;
-  if (error) return <div>Error: {error.message}</div>;
 
   return (
     <div>
-      <button onClick={() => mutate()}>Refresh</button>
       <ul>
-        {data?.map(user => (
-          <li key={user.id}>{user.name}</li>
-        ))}
+        {data?.map(user => <li key={user.id}>{user.name}</li>)}
       </ul>
+      <button onClick={() => mutate()}>Refresh</button>
     </div>
   );
 }`}
           language="tsx"
         />
-      </section>
+      </div>
 
-      <section className="mb-10">
-        <h2 className="text-xl font-bold mb-4">Mutations (POST/PUT/DELETE)</h2>
-        <Paragraph>
-          Use <InlineCode>submit</InlineCode> for mutations:
-        </Paragraph>
+      <h2>Mutations (POST, PUT, DELETE)</h2>
+      <p>
+        To perform actions, call <code>useFetcher</code> without a key (or with options).
+        It returns a <code>submit</code> function.
+      </p>
+
+      <div className="not-prose my-6">
         <CodeBlock
-          code={`function CreateUser() {
+          code={`import { useFetcher } from 'buncf/router';
+
+export default function CreateUser() {
   const { submit, isSubmitting } = useFetcher();
 
   const handleCreate = async () => {
     await submit(
-      { name: 'Alice', email: 'alice@example.com' },
-      { method: 'POST', action: '/api/users' }
+      { name: "Alice" }, // Body
+      { method: "POST", action: "/api/users" } // Options
     );
   };
 
   return (
     <button onClick={handleCreate} disabled={isSubmitting}>
-      {isSubmitting ? 'Creating...' : 'Create User'}
+      Create User
     </button>
   );
 }`}
           language="tsx"
         />
-      </section>
+      </div>
 
-      <section className="mb-10">
-        <h2 className="text-xl font-bold mb-4">With Callbacks</h2>
-        <Paragraph>
-          Handle success and error states with callbacks:
-        </Paragraph>
+      <h2>Declarative Forms</h2>
+      <p>
+        <code>useFetcher</code> also provides a <code>Form</code> component that automatically
+        handles submission states and prevents default browser behavior.
+      </p>
+
+      <div className="not-prose my-6">
         <CodeBlock
-          code={`const { submit } = useFetcher<User[]>('/api/users', {
-  onSuccess: (data, variables) => {
-    toast.success('User created!');
-    console.log('Submitted data:', variables);
-    console.log('Response:', data);
+          code={`const { Form, isSubmitting } = useFetcher();
+
+<Form action="/api/login" method="POST">
+  <input name="email" type="email" />
+  <input name="password" type="password" />
+  <button disabled={isSubmitting}>Login</button>
+</Form>`}
+          language="tsx"
+        />
+      </div>
+
+      <h2>Callbacks</h2>
+      <p>You can hook into the lifecycle of a request with <code>onSuccess</code> and <code>onError</code>.</p>
+
+      <div className="not-prose my-6">
+        <CodeBlock
+          code={`const { submit } = useFetcher(null, {
+  onSuccess: (data) => {
+    toast.success("Saved successfully!");
+    router.push("/dashboard");
   },
   onError: (error) => {
     toast.error(error.message);
-  },
-  onSettled: () => {
-    // Called on both success and error
-    setIsOpen(false);
-  },
+  }
 });`}
           language="tsx"
         />
-      </section>
+      </div>
 
-      <section className="mb-10">
-        <h2 className="text-xl font-bold mb-4">Declarative Form</h2>
-        <Paragraph>
-          Use the <InlineCode>Form</InlineCode> component for declarative form handling:
-        </Paragraph>
+      <h2>Auto-Generated API Client</h2>
+      <p>
+        For maximum type safety, Buncf generates a typed client in <code>.buncf/api-client.ts</code>.
+        You can import this client to make direct fetch calls with full type inference.
+      </p>
+
+      <div className="not-prose my-6">
         <CodeBlock
-          code={`function ContactForm() {
-  const { Form, isSubmitting, data } = useFetcher();
+          code={`import { api } from '../.buncf/api-client';
 
-  return (
-    <Form action="/api/contact" method="POST">
-      <input name="name" placeholder="Name" required />
-      <input name="email" type="email" placeholder="Email" required />
-      <textarea name="message" placeholder="Message" />
-      
-      <button type="submit" disabled={isSubmitting}>
-        {isSubmitting ? 'Sending...' : 'Send Message'}
-      </button>
-      
-      {data?.success && <p>Message sent!</p>}
-    </Form>
-  );
-}`}
-          language="tsx"
+// 'user' is fully typed based on your API handler return type!
+const user = await api.get('/api/users/:id', {
+  params: { id: '123' }
+});`}
+          language="typescript"
         />
-      </section>
-
-      <section className="mb-10">
-        <h2 className="text-xl font-bold mb-4">Revalidation Options</h2>
-        <CodeBlock
-          code={`const { data, mutate } = useFetcher('/api/users', {
-  // Revalidate on window focus
-  revalidateOnFocus: true,
-  
-  // Revalidate on network reconnect
-  revalidateOnReconnect: true,
-  
-  // Poll every 30 seconds
-  refreshInterval: 30000,
-  
-  // Keep previous data while revalidating
-  keepPreviousData: true,
-});
-
-// Manual revalidation
-mutate();
-
-// Optimistic update
-mutate(async (current) => {
-  return [...current, newUser];
-}, { revalidate: false });`}
-          language="tsx"
-        />
-      </section>
-
-      <DocNavigation
-        prev={{ href: "/docs/router", label: "React Router" }}
-        next={{ href: "/docs/actions", label: "Server Actions" }}
-      />
-    </article>
+      </div>
+    </div>
   );
 }

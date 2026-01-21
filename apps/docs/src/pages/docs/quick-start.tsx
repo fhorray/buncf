@@ -1,80 +1,81 @@
-import { CodeBlock } from "@/components/code-block";
-import { PageHeader, Paragraph, DocNavigation } from "@/components/docs/doc-components";
-import { Rocket } from "lucide-react";
+import { CodeBlock } from '@/components/code-block';
 
-export default function QuickStartPage() {
+export const meta = () => [
+  { title: 'Quick Start - Buncf' },
+  { name: 'description', content: 'Get up and running with Buncf in minutes' },
+];
+
+export default function QuickStart() {
   return (
-    <article className="px-6 py-12 lg:px-12">
-      <PageHeader
-        icon={Rocket}
-        title="Quick Start"
-        description="Create your first buncf project and deploy it to Cloudflare Workers in minutes."
-      />
+    <div className="prose prose-invert max-w-none">
+      <h1>Quick Start</h1>
+      <p>Follow this guide to create your first Buncf application.</p>
 
-      <section className="mb-10">
-        <h2 className="text-xl font-bold mb-4">Create a New Project</h2>
-        <Paragraph>
-          The fastest way to get started is using the buncf CLI to scaffold a new project:
-        </Paragraph>
+      <h2>1. Initialize Project</h2>
+      <div className="not-prose my-4">
+        <CodeBlock code="bunx buncf init my-app" language="bash" />
+      </div>
+
+      <h2>2. Start Development Server</h2>
+      <div className="not-prose my-4">
         <CodeBlock
-          code={`# Create a new project
-bunx buncf init my-app
-
-# Navigate to the project directory
-cd my-app`}
+          code={`cd my-app
+bun dev`}
           language="bash"
-          filename="Terminal"
-          showLineNumbers={false}
         />
-      </section>
+      </div>
+      <p>
+        The server will start at <code>http://localhost:3000</code>.
+        Buncf includes hot-reloading, so changes to your files will instantly appear in the browser.
+      </p>
 
-      <section className="mb-10">
-        <h2 className="text-xl font-bold mb-4">Start Development Server</h2>
-        <Paragraph>
-          Start the development server with hot reload:
-        </Paragraph>
+      <h2>3. Create an API Route</h2>
+      <p>Create a new file at <code>src/api/hello.ts</code>:</p>
+      <div className="not-prose my-4">
         <CodeBlock
-          code="bun dev"
-          language="bash"
-          showLineNumbers={false}
-        />
-        <Paragraph>
-          Your app is now running at <code className="px-1.5 py-0.5 bg-secondary rounded text-neon font-mono text-sm">http://localhost:3000</code>
-        </Paragraph>
-      </section>
+          code={`import { defineHandler } from 'buncf';
 
-      <section className="mb-10">
-        <h2 className="text-xl font-bold mb-4">Deploy to Cloudflare</h2>
-        <Paragraph>
-          When you're ready to deploy, run:
-        </Paragraph>
+export const GET = defineHandler((req) => {
+  return Response.json({ message: "Hello from Buncf!" });
+});`}
+          language="typescript"
+          filename="src/api/hello.ts"
+        />
+      </div>
+      <p>Visit <code>http://localhost:3000/api/hello</code> to see the JSON response.</p>
+
+      <h2>4. Create a Page</h2>
+      <p>Create a new file at <code>src/pages/about.tsx</code>:</p>
+      <div className="not-prose my-4">
         <CodeBlock
-          code="bun deploy"
-          language="bash"
-          showLineNumbers={false}
+          code={`import { Link } from 'buncf/router';
+
+export default function About() {
+  return (
+    <div className="p-10">
+      <h1 className="text-2xl font-bold">About Us</h1>
+      <p className="mt-4">Built with Buncf.</p>
+      <Link href="/" className="text-blue-500 mt-4 block">
+        Go Home
+      </Link>
+    </div>
+  );
+}`}
+          language="tsx"
+          filename="src/pages/about.tsx"
         />
-        <Paragraph>
-          This builds your app and deploys it to Cloudflare Workers. That's it!
-        </Paragraph>
-      </section>
+      </div>
+      <p>Visit <code>http://localhost:3000/about</code> to see your new page.</p>
 
-      <section className="mb-10">
-        <h2 className="text-xl font-bold mb-4">What's Next?</h2>
-        <Paragraph>
-          Now that you have a running project, explore the documentation to learn about:
-        </Paragraph>
-        <ul className="list-disc list-inside text-muted-foreground space-y-2 ml-4">
-          <li>Project structure and file conventions</li>
-          <li>Creating API routes and page routes</li>
-          <li>Using Cloudflare bindings (D1, KV, R2)</li>
-          <li>Data fetching and server actions</li>
-        </ul>
-      </section>
-
-      <DocNavigation
-        prev={{ href: "/docs", label: "Introduction" }}
-        next={{ href: "/docs/installation", label: "Installation" }}
-      />
-    </article>
+      <h2>5. Deploy</h2>
+      <p>When you're ready to go live on Cloudflare Workers:</p>
+      <div className="not-prose my-4">
+        <CodeBlock code="bun deploy" language="bash" />
+      </div>
+      <p>
+        This will verify your build and deploy it using Wrangler.
+        You may be prompted to log in to Cloudflare if you haven't already.
+      </p>
+    </div>
   );
 }
