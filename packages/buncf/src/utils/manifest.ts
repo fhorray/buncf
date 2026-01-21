@@ -20,7 +20,12 @@ export async function generateRoutesManifest() {
 
     if (fs.existsSync(pagesDir)) {
       const glob = new Bun.Glob("**/*.{tsx,jsx,ts,js}");
-      const files = Array.from(glob.scanSync({ cwd: pagesDir, onlyFiles: true }));
+      const files: string[] = [];
+      for await (const file of glob.scan({ cwd: pagesDir, onlyFiles: true })) {
+        files.push(file);
+      }
+      // Ensure deterministic order
+      files.sort();
 
       routeEntries = files.map((file) => {
         const absFile = path.resolve(pagesDir, file);
@@ -63,13 +68,13 @@ export async function generateRoutesManifest() {
         }
       }
 
-      const scanLayouts = (dir: string, baseRoute: string) => {
-        const files = fs.readdirSync(dir);
-        for (const file of files) {
+      const scanLayouts = async (dir: string, baseRoute: string) => {
+        const files = await fs.promises.readdir(dir);
+        await Promise.all(files.map(async (file) => {
           const fullPath = path.join(dir, file);
-          const stat = fs.statSync(fullPath);
+          const stat = await fs.promises.stat(fullPath);
           if (stat.isDirectory()) {
-            scanLayouts(fullPath, `${baseRoute}/${file}`);
+            await scanLayouts(fullPath, `${baseRoute}/${file}`);
           } else if (file.match(/^_layout\.(tsx|jsx|ts|js)$/)) {
             let routeKey = baseRoute === "" ? "/" : baseRoute;
             if (!routeKey.startsWith("/")) routeKey = "/" + routeKey;
@@ -79,9 +84,10 @@ export async function generateRoutesManifest() {
             layoutEntries.push(`  "${routeKey}": () => import("${importPath}")`);
             stats.layouts++;
           }
-        }
+        }));
       };
-      scanLayouts(pagesDir, "");
+      await scanLayouts(pagesDir, "");
+      layoutEntries.sort();
     }
 
     const routesContent = `
