@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "module": "Preserve",
+    "target": "ESNext",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "buncf": ["./node_modules/buncf/src/index.ts"],
+      "buncf/router": ["./node_modules/buncf/src/router/react.ts"],
+      "$api": ["./.buncf/api-client.ts"],
+      "$routes": ["./.buncf/routes.ts"]
+    }
+  },
+  "include": ["src/**/*", "*.d.ts", ".buncf/routes.ts"]
+}
